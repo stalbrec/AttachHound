@@ -93,11 +93,6 @@ def download_attachments(
     Save the attachments to the specified directory.
     """
 
-    # Create a directory for attachments
-    if not os.path.exists(attachment_dir):
-        os.makedirs(attachment_dir)
-        logging.info(f"Created directory: {attachment_dir}")
-
     logging.info(f"Selecting mailbox folder: {folder}")
     result, _ = mail.select(folder)
 
@@ -285,6 +280,17 @@ def main():
     logging.info(f"Provided email address: {args.email}")
     logging.info(f"Using SQLite database for metadata: {args.db}")
     logging.info(f"Storing attachments at {args.attachment_dir}")
+
+    logging.info("Making sure all necessary directories exist...")
+
+    # Create the directory for attachments
+    if not os.path.exists(args.attachment_dir):
+        os.makedirs(args.attachment_dir)
+        logging.info(f"Created directory: {args.attachment_dir}")
+    # Create the directory for the SQLite database
+    if not os.path.exists(os.path.dirname(args.db)):
+        os.makedirs(os.path.dirname(args.db))
+        logging.info(f"Created directory: {os.path.dirname(args.db)}")
 
     # Initialize the SQLite database
     conn = init_db(args.db)
