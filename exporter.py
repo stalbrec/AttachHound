@@ -8,10 +8,56 @@ import json
 from datetime import datetime
 import re
 import time
+import sqlite3
+from typing import List
 
 # Get IMAP server and port from environment variables or use defaults
 IMAP_SERVER = os.environ.get("IMAP_SERVER", "imap.gmail.com")
 IMAP_PORT = os.environ.get("IMAP_PORT", 993)
+
+
+def init_db(db_name: str = "processed_emails.db"):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS processed_emails (
+            uid TEXT PRIMARY KEY,
+            subject TEXT,
+            sender TEXT,
+            recipient TEXT,
+            date TEXT,
+            body TEXT,
+            attachments TEXT
+        )
+    """)
+    conn.commit()
+    return conn
+
+
+def email_already_processed(cursor: sqlite3.Cursor, email_uid: str):
+    cursor.execute("SELECT 1 FROM processed_emails WHERE uid = ?", (email_uid,))
+    return cursor.fetchone() is not None
+
+
+def save_email_metadata(
+    conn: sqlite3.Connection,
+    email_uid: str,
+    subject: str,
+    sender: str,
+    recipient: str,
+    date: str,
+    body: str,
+    attachments: List[str],
+):
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO processed_emails (uid, subject, sender, recipient, date, body, attachments)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """,
+        (email_uid, subject, sender, recipient, date, body, json.dumps(attachments)),
+    )
+    conn.commit()
 
 
 def connect_to_email(email_address: str, password: str):
@@ -37,7 +83,10 @@ def sanitize_filename(filename: str):
 
 
 def download_attachments(
-    mail, folder: str = "inbox", attachment_dir: str = "attachments"
+    mail: imaplib.IMAP4_SSL,
+    conn: sqlite3.Connection,
+    folder: str = "inbox",
+    attachment_dir: str = "attachments",
 ):
     """
     Download attachments from emails in the specified folder.
@@ -57,22 +106,28 @@ def download_attachments(
         return
 
     logging.info("Searching for emails in the selected folder...")
-    result, data = mail.search(None, "ALL")
+    result, data = mail.uid("search", None, "ALL")
 
     if result != "OK":
         logging.error("Failed to search for emails.")
         return
 
-    ids = data[0].split()
-    logging.info(f"Found {len(ids)} emails in the folder.")
-    metadata_list = []
+    uids = data[0].split()
+    logging.info(f"Found {len(uids)} emails in the folder.")
 
-    for i in ids:
-        logging.info(f"Processing email with ID: {i.decode()}")
-        result, data = mail.fetch(i, "(RFC822)")
+    cursor = conn.cursor()
+
+    for uid in uids:
+        uid = uid.decode()
+        if email_already_processed(cursor, uid):
+            logging.debug(f"Email with UID {uid} has already been processed. Skipping.")
+            continue
+
+        logging.info(f"Processing email with UID: {uid}")
+        result, data = mail.uid("fetch", uid, "(RFC822)")
 
         if result != "OK":
-            logging.error(f"Failed to fetch email with ID: {i.decode()}")
+            logging.error(f"Failed to fetch email with UID: {uid}")
             continue
 
         for response_part in data:
@@ -122,14 +177,9 @@ def download_attachments(
                 else:
                     email_body = msg.get_payload(decode=True).decode()
 
-                email_metadata = {
-                    "subject": email_subject,
-                    "from": email_from,
-                    "to": email_to,
-                    "date": email_isodate,
-                    "body": email_body,
-                    "attachments": [],
-                }
+                # List to store attachment file paths
+                attachments_list = []
+
                 # Iterate over parts of the email for attachments
                 for part in msg.walk():
                     if part.get_content_maintype() == "multipart":
@@ -160,23 +210,25 @@ def download_attachments(
                             file.write(part.get_payload(decode=True))
 
                         logging.info(f"Attachment saved to {output_path}")
-                        email_metadata["attachments"].append(output_path)
+                        attachments_list.append(output_path)
 
-                if len(email_metadata["attachments"]) > 0:
-                    # Add the email metadata to the list
-                    metadata_list.append(email_metadata)
-                    logging.info("Email metadata added to the list.")
-
-    # Save all metadata at once to a single JSON file
-    metadata_file = "email_metadata_all.json"
-    with open(metadata_file, "w") as f:
-        json.dump(metadata_list, f, indent=4)
-    logging.info(f"All email metadata saved to {metadata_file}")
+                # Save email metadata and attachments to SQLite
+                save_email_metadata(
+                    conn,
+                    uid,
+                    email_subject,
+                    email_from,
+                    email_to,
+                    email_isodate,
+                    email_body,
+                    attachments_list,
+                )
+                logging.info(f"Email with UID {uid} metadata saved to database.")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download attachments from Gmail and store metadata in JSON"
+        description="Download attachments from Mailbox (IMAP) and store metadata in SQLite"
     )
     parser.add_argument(
         "--email",
@@ -196,6 +248,23 @@ def main():
         required=False,
         default=os.environ.get("CHECK_INTERVAL", 60),
     )
+    parser.add_argument(
+        "--db",
+        help="Path to SQLite database for storing processed email UIDs and metadata",
+        required=False,
+        default="/data/processed_emails.db",
+    )
+    parser.add_argument(
+        "--inbox",
+        help="Name of folder on imap server, where mails are to be fetched from",
+        default="inbox",
+    )
+    parser.add_argument(
+        "--attachment-dir",
+        help="Path to directory for storing the downloaded attachments",
+        default="/data/attachments",
+    )
+
     args = parser.parse_args()
 
     if not args.email or not args.password:
@@ -214,12 +283,19 @@ def main():
     logging.info(f"Using IMAP port: {IMAP_PORT}")
     logging.info(f"Checking for new emails every {args.interval} seconds.")
     logging.info(f"Provided email address: {args.email}")
+    logging.info(f"Using SQLite database for metadata: {args.db}")
+    logging.info(f"Storing attachments at {args.attachment_dir}")
+
+    # Initialize the SQLite database
+    conn = init_db(args.db)
 
     while True:
         try:
             # Connect to the email server and download attachments
             mail = connect_to_email(args.email, args.password)
-            download_attachments(mail)
+            download_attachments(
+                mail, conn, folder=args.inbox, attachment_dir=args.attachment_dir
+            )
             logging.info("Script finished successfully.")
         except Exception as e:
             logging.error(f"An error occurred: {e}")
