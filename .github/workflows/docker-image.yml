@@ -35,14 +35,15 @@ jobs:
           username: ${{ secrets.GHCR_ACTOR }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build Docker image
+      - name: Just build Docker image
+        if : github.event_name == 'pull_request'
         run: |
           docker buildx build \
             --platform linux/${{ matrix.arch }} \
-            -t ghcr.io/stalbrec/attachhound:${{ github.ref_name }}-${{ matrix.arch }} \
-            --push .
+            -t ghcr.io/stalbrec/attachhound:pr-test-${{ matrix.arch }} \
+            .
 
-      - name: Push Docker image
+      - name: Build and Push Docker image
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
           docker buildx build \
