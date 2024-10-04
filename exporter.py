@@ -96,7 +96,9 @@ def download_attachments(
                         email_datetime = datetime.strptime(email_date, date_format)
                         break  # If parsing is successful, exit the loop
                     except ValueError:
-                        logging.debug(f"Failed to parse date with format: {date_format}")
+                        logging.debug(
+                            f"Failed to parse date with format: {date_format}"
+                        )
                         continue  # If parsing fails, try the next format
                 else:
                     # Raise an error only if no formats match
@@ -189,7 +191,10 @@ def main():
         default=os.environ.get("EMAIL_PASSWORD"),
     )
     parser.add_argument(
-        "--interval", help="Check interval in seconds", required=False, default=os.environ.get("CHECK_INTERVAL", 60)
+        "--interval",
+        help="Check interval in seconds",
+        required=False,
+        default=os.environ.get("CHECK_INTERVAL", 60),
     )
     args = parser.parse_args()
 
