@@ -37,5 +37,5 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/${{ matrix.arch }} \
-            -t ghcr.io/stalbrec/attachhound:${{ github.ref_name }}-${{ matrix.arch }} \
+            -t ghcr.io/stalbrec/${{ github.repository }}:${{ github.ref_name }}-${{ matrix.arch }} \
             --push .
