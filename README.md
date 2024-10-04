@@ -12,21 +12,6 @@
 
 ---
 
-## 🛠️ **How It Works**
-```mermaid
-graph TD;
-    A[Connect to Mailbox via IMAP] --> B[Retrieve Emails];
-    B --> C[Check for Attachments];
-    C --> D{Are there attachments?};
-    D -- Yes --> E[Download Attachments];
-    E --> F[Save Attachments to Disk];
-    F --> G[Store Email Metadata in SQLite];
-    D -- No --> H[Move to Next Email];
-    G --> I[Wait for Next Check Interval];
-    H --> I;
-```
-
----
 
 ## 📦 **Running the App**
 
