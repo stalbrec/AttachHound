@@ -205,6 +205,10 @@ def main():
     )
 
     logging.info("Starting the email attachment downloader script.")
+    logging.info(f"Using IMAP server: {IMAP_SERVER}")
+    logging.info(f"Using IMAP port: {IMAP_PORT}")
+    logging.info(f"Checking for new emails every {args.interval} seconds.")
+    logging.info(f"Provided email address: {args.email}")
 
     while True:
         try:
