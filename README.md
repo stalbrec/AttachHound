@@ -17,8 +17,10 @@
 ### **Option 1: Use Prebuilt Docker Image**
 You can run AttachHound using a prebuilt Docker image from the GitHub Container Registry:
 ```bash
-docker run -d --env-file .env ghcr.io/stalbrec/attachhound:<tag>
+docker run -d --env-file .env -v <local_path>:/app/data ghcr.io/stalbrec/attachhound:<tag>
 ```
+
+**Note**: The attachments and database will be saved to `/app/data` inside the container. To persist data across container runs, you should mount a local path to `/app/data` using the `-v` option as shown above.
 
 Available tags:
 | **Tag**       | **Description**                 |
@@ -31,7 +33,7 @@ Alternatively, you can build the Docker image from source:
 ```bash
 git clone https://github.com/stalbrec/attachhound.git && cd attachhound
 docker build -t attachhound .
-docker run -d --env-file .env attachhound
+docker run -d --env-file .env -v <local_path>:/app/data attachhound
 ```
 
 ---
