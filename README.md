@@ -8,7 +8,6 @@
 - 📥 **Automated Attachment Collection**: Connects to your mailbox and fetches attachments on a recurring schedule.
 - 💾 **Metadata Storage**: Saves email metadata to an SQLite database for easy reference and auditing.
 - ⚙️ **Customizable**: Easily configurable with environment variables or command-line arguments.
-- 🛡️ **Safety First**: Filenames are automatically sanitized to ensure safe storage.
 
 ---
 
