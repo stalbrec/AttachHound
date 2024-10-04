@@ -95,6 +95,7 @@ def download_attachments(
 
     logging.info(f"Selecting mailbox folder: {folder}")
     result, _ = mail.select(folder)
+    skipped_emails = 0
 
     if result != "OK":
         logging.error("Failed to select mailbox.")
@@ -116,6 +117,7 @@ def download_attachments(
         uid = uid.decode()
         if email_already_processed(cursor, uid):
             logging.debug(f"Email with UID {uid} has already been processed. Skipping.")
+            skipped_emails += 1
             continue
 
         logging.info(f"Processing email with UID: {uid}")
@@ -219,7 +221,8 @@ def download_attachments(
                     attachments_list,
                 )
                 logging.info(f"Email with UID {uid} metadata saved to database.")
-
+    logging.info(f"Processed {len(uids) - skipped_emails} emails.")
+    logging.info(f"Skipped {skipped_emails} emails.")
 
 def main():
     parser = argparse.ArgumentParser(
