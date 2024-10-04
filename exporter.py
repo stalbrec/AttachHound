@@ -17,6 +17,18 @@ IMAP_PORT = os.environ.get("IMAP_PORT", 993)
 
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
+    """
+    Initialize the SQLite database for storing processed emails.
+
+    This function creates a new SQLite database or connects to an existing one.
+    It also creates a table named 'processed_emails' if it does not already exist.
+
+    Args:
+        db_name (str): The name of the database file. Defaults to "processed_emails.db".
+
+    Returns:
+        sqlite3.Connection: A connection object to the SQLite database.
+    """
     logging.debug(f"Initializing the database: {db_name}")
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
@@ -37,6 +49,19 @@ def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
 
 
 def email_already_processed(cursor: sqlite3.Cursor, email_uid: str) -> bool:
+    """
+    Check if an email with the given UID has already been processed.
+
+    This function queries the 'processed_emails' table to check if an email
+    with the specified UID exists.
+
+    Args:
+        cursor (sqlite3.Cursor): A cursor object to execute the query.
+        email_uid (str): The UID of the email to check.
+
+    Returns:
+        bool: True if the email has already been processed, False otherwise.
+    """
     logging.debug(f"Checking if email with UID {email_uid} has already been processed.")
     cursor.execute("SELECT 1 FROM processed_emails WHERE uid = ?", (email_uid,))
     return cursor.fetchone() is not None
@@ -52,6 +77,21 @@ def save_email_metadata(
     body: str,
     attachments: List[str],
 ):
+    """
+    Save the metadata of a processed email to the database.
+
+    This function inserts the metadata of a processed email into the 'processed_emails' table.
+
+    Args:
+        conn (sqlite3.Connection): A connection object to the SQLite database.
+        email_uid (str): The UID of the email.
+        subject (str): The subject of the email.
+        sender (str): The sender of the email.
+        recipient (str): The recipient of the email.
+        date (str): The date the email was sent.
+        body (str): The body content of the email.
+        attachments (List[str]): A list of attachment filenames associated with the email.
+    """
     logging.info(f"Saving metadata for email UID {email_uid}")
     cursor = conn.cursor()
     cursor.execute(
@@ -66,6 +106,22 @@ def save_email_metadata(
 
 
 def connect_to_email(email_address: str, password: str) -> imaplib.IMAP4_SSL:
+    """
+    Connect to the email server using the provided email address and password.
+
+    This function establishes a connection to the email server using IMAP over SSL.
+    It logs in with the provided credentials and returns the mail object for further operations.
+
+    Args:
+        email_address (str): The email address to connect with.
+        password (str): The password for the email account.
+
+    Returns:
+        imaplib.IMAP4_SSL: An IMAP4_SSL object representing the connection to the email server.
+
+    Raises:
+        SystemExit: If authentication fails, the function logs an error and exits the program.
+    """
     logging.info("Connecting to the email server...")
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
@@ -74,13 +130,23 @@ def connect_to_email(email_address: str, password: str) -> imaplib.IMAP4_SSL:
         return mail
     except imaplib.IMAP4.error as e:
         logging.error(f"Authentication failed: {e}")
-        raise SystemExit("Invalid credentials. Please check your email and password or use an app-specific password.")
+        raise SystemExit(
+            "Invalid credentials. Please check your email and password or use an app-specific password."
+        )
 
 
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize the filename to make it safe for filesystem use.
-    Replace special characters with underscores.
+
+    This function replaces special characters in the filename with underscores
+    to ensure the filename is safe for use in the filesystem.
+
+    Args:
+        filename (str): The original filename to sanitize.
+
+    Returns:
+        str: The sanitized filename with special characters replaced by underscores.
     """
     sanitized = re.sub(r"[^\w\-_\. ]", "_", filename)
     logging.debug(f"Sanitized filename: {filename} -> {sanitized}")
@@ -95,7 +161,18 @@ def download_attachments(
 ):
     """
     Download attachments from emails in the specified folder.
-    Save the attachments to the specified directory.
+
+    This function connects to the specified email folder, iterates through the emails,
+    and downloads any attachments found. The attachments are saved to the specified directory.
+
+    Args:
+        mail (imaplib.IMAP4_SSL): The IMAP connection object.
+        conn (sqlite3.Connection): The SQLite database connection object.
+        folder (str): The email folder to search for attachments. Defaults to "inbox".
+        attachment_dir (str): The directory to save the attachments. Defaults to "attachments".
+
+    Returns:
+        None
     """
     logging.info(f"Selecting mailbox folder: {folder}")
     result, _ = mail.select(folder)
@@ -142,27 +219,39 @@ def download_attachments(
                 email_from = msg.get("From")
                 email_to = msg.get("To")
 
-                logging.debug(f"Email UID {uid} - Subject: {email_subject}, From: {email_from}, To: {email_to}")
+                logging.debug(
+                    f"Email UID {uid} - Subject: {email_subject}, From: {email_from}, To: {email_to}"
+                )
 
                 email_date = msg.get("Date")
                 email_isodate = None
-                for date_format in ["%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z"]:
+                for date_format in [
+                    "%a, %d %b %Y %H:%M:%S %z",
+                    "%a, %d %b %Y %H:%M:%S %Z",
+                ]:
                     try:
                         email_datetime = datetime.strptime(email_date, date_format)
                         email_isodate = email_datetime.isoformat()
                         break  # If parsing is successful, exit the loop
                     except ValueError:
-                        logging.debug(f"Failed to parse date with format: {date_format}")
+                        logging.debug(
+                            f"Failed to parse date with format: {date_format}"
+                        )
                         continue  # If parsing fails, try the next format
                 if not email_isodate:
-                    logging.error(f"Failed to parse date for email UID {uid}: {email_date}")
+                    logging.error(
+                        f"Failed to parse date for email UID {uid}: {email_date}"
+                    )
                     continue
 
                 email_body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
                         content_type = part.get_content_type()
-                        if content_type == "text/plain" and part.get("Content-Disposition") is None:
+                        if (
+                            content_type == "text/plain"
+                            and part.get("Content-Disposition") is None
+                        ):
                             email_body = part.get_payload(decode=True).decode()
                             logging.debug(f"Extracted body for email UID {uid}")
                             break
@@ -187,13 +276,21 @@ def download_attachments(
                             filename = filename.decode()
 
                         sanitized_filename = sanitize_filename(filename)
-                        logging.info(f"Found attachment: {sanitized_filename} for email UID {uid}")
+                        logging.info(
+                            f"Found attachment: {sanitized_filename} for email UID {uid}"
+                        )
 
                         # Create a directory for this email
-                        email_prefix = sanitize_filename(f"{email_subject}_{email_from}_{email_isodate}")
+                        email_prefix = sanitize_filename(
+                            f"{email_subject}_{email_from}_{email_isodate}"
+                        )
                         email_prefix_path = os.path.join(attachment_dir, email_prefix)
 
-                        output_path = f"{email_prefix_path}_{sanitized_filename}".replace(" ", "_")
+                        output_path = (
+                            f"{email_prefix_path}_{sanitized_filename}".replace(
+                                " ", "_"
+                            )
+                        )
 
                         with open(output_path, "wb") as file:
                             file.write(part.get_payload(decode=True))
@@ -274,7 +371,9 @@ def main():
     logging.debug(f"Using IMAP server: {IMAP_SERVER} on port {IMAP_PORT}")
     logging.info(f"Checking for new emails every {args.interval} seconds.")
     logging.info(f"Using email address: {args.email}")
-    logging.debug(f"Database path: {args.db}, Attachment directory: {args.attachment_dir}")
+    logging.debug(
+        f"Database path: {args.db}, Attachment directory: {args.attachment_dir}"
+    )
 
     logging.info("Ensuring necessary directories exist...")
 
@@ -302,7 +401,7 @@ def main():
             # Connect to the email server and download attachments
             mail = connect_to_email(args.email, args.password)
             logging.info("Connected to the email server successfully.")
-            
+
             download_attachments(
                 mail, conn, folder=args.inbox, attachment_dir=args.attachment_dir
             )
