@@ -8,13 +8,13 @@ from mail import Mailbox, IMAPMailbox, ExchangeMailbox, Mail
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
     """
-    Initialize the SQLite database for storing processed emails.
+    Initializes the SQLite database for storing processed emails.
 
     This function creates a new SQLite database or connects to an existing one.
     It also creates a table named 'processed_emails' if it does not already exist.
 
     Args:
-        db_name (str): The name of the database file. Defaults to "processed_emails.db".
+        db_name (str): The name of the SQLite database file. Defaults to "processed_emails.db".
 
     Returns:
         sqlite3.Connection: A connection object to the SQLite database.
@@ -45,16 +45,17 @@ def download_attachments(
     attachment_dir: str = "attachments",
 ):
     """
-    Download attachments from emails in the specified folder.
+    Downloads attachments from emails in the specified folder.
 
     This function connects to the specified email folder, iterates through the emails,
-    and downloads any attachments found. The attachments are saved to the specified directory.
+    and downloads any attachments found. The attachments are saved to the specified directory,
+    and metadata is stored in the SQLite database.
 
     Args:
-        mail (Mailbox): a Mailbox object with valid connection.
+        mailbox (Mailbox): A Mailbox object that is connected to the email server.
         conn (sqlite3.Connection): The SQLite database connection object.
-        folder (str): The email folder to search for attachments. Defaults to "inbox".
-        attachment_dir (str): The directory to save the attachments. Defaults to "attachments".
+        folder (str): The name of the email folder to search for attachments. Defaults to "inbox".
+        attachment_dir (str): The directory where the downloaded attachments will be saved. Defaults to "attachments".
 
     Returns:
         None
@@ -79,51 +80,51 @@ def download_attachments(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download attachments from Mailbox (IMAP) and store metadata in SQLite"
+        description="Download attachments from Mailbox (IMAP or Exchange) and store metadata in SQLite."
     )
     parser.add_argument(
         "--mailbox-type", 
         choices=["IMAP", "Exchange"],
         default="IMAP",
-        help="Type of mailbox to connect to."
+        help="Type of mailbox to connect to (IMAP or Exchange). Default is 'IMAP'."
     )
     parser.add_argument(
         "--email",
-        help="Email address",
+        help="Email address to connect to the mailbox. Can also be provided via the EMAIL_ADDRESS environment variable.",
         required=False,
         default=os.environ.get("EMAIL_ADDRESS"),
     )
     parser.add_argument(
         "--password",
-        help="Email password",
+        help="Password for the email account. Can also be provided via the EMAIL_PASSWORD environment variable.",
         required=False,
         default=os.environ.get("EMAIL_PASSWORD"),
     )
     parser.add_argument(
         "--interval",
-        help="Check interval in seconds",
+        help="Check interval in seconds to look for new emails. Default is 60 seconds.",
         required=False,
         default=os.environ.get("CHECK_INTERVAL", 60),
     )
     parser.add_argument(
         "--db",
-        help="Path to SQLite database for storing processed email UIDs and metadata",
+        help="Path to SQLite database for storing processed email UIDs and metadata. Default is '.attachhound/processed_emails.db'.",
         required=False,
         default=".attachhound/processed_emails.db",
     )
     parser.add_argument(
         "--folder",
-        help="Name of folder on server, where mails are to be fetched from",
+        help="Name of the folder on the server from which emails will be fetched. Default is 'inbox'.",
         default="inbox",
     )
     parser.add_argument(
         "--public-folder",
-        help="Folder is public/shared one. (On Exchange server only!)",
+        help="If specified, connects to a public/shared folder (on Exchange server only).",
         action="store_true"
     )
     parser.add_argument(
         "--attachment-dir",
-        help="Path to directory for storing the downloaded attachments",
+        help="Directory where downloaded attachments will be stored. Default is '.attachhound/attachments'.",
         default=".attachhound/attachments",
     )
 
@@ -171,7 +172,7 @@ def main():
     while True:
         try:
             # Connect to the email server and download attachments
-            mailbox_class = {"IMAP":IMAPMailbox,"Exchange":ExchangeMailbox}[args.mailbox_type]
+            mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[args.mailbox_type]
             mailbox = mailbox_class(export_directory=args.attachment_dir)
             mailbox.connect(args.email, args.password)
             logging.info("Connected to the email server successfully.")

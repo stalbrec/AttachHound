@@ -279,9 +279,6 @@ class IMAPMailbox(Mailbox):
 
         Returns:
             List[str]: List of email UIDs found in the folder.
-
-        Raises:
-            Exception: If searching for emails fails.
         """
         logging.info("Searching for emails in the folder...")
         result, data = self.connection.uid("search", None, "ALL")
