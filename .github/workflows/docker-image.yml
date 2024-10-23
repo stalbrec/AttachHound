@@ -6,9 +6,6 @@ on:
       - 'v*'
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
@@ -35,18 +32,10 @@ jobs:
           username: ${{ secrets.GHCR_ACTOR }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Just build Docker image
-        if : github.event_name == 'pull_request'
-        run: |
-          docker buildx build \
-            --platform linux/${{ matrix.arch }} \
-            -t ghcr.io/stalbrec/attachhound:pr-test-${{ matrix.arch }} \
-            .
-
       - name: Build and Push Docker image
-        if: github.event_name == 'push' && github.ref_type == 'tag'
         run: |
+          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2 |  tr '[:upper:]' '[:lower:]')
           docker buildx build \
             --platform linux/${{ matrix.arch }} \
-            -t ghcr.io/stalbrec/attachhound:${{ github.ref_name }}-${{ matrix.arch }} \
+            -t ghcr.io/stalbrec/$REPO_NAME:${{ github.ref_name }}-${{ matrix.arch }} \
             --push .
