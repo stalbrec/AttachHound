@@ -342,7 +342,10 @@ class ExchangeMailbox(Mailbox):
             date = email.datetime_received.isoformat()
             body = email.body
             attachments = self.get_attachments(email, subject, sender, date)
-            
+
+            email.is_read = True
+            email.save()
+
             return Mail(uid=uid, subject=subject, sender=sender, recipient=recipient, date=date, body=body, attachments=attachments)
 
         except Exception as e:
