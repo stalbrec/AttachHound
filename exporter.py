@@ -3,7 +3,7 @@ import os
 import logging
 import time
 import sqlite3
-from mail import Mailbox, IMAPMailbox, Mail
+from mail import Mailbox, IMAPMailbox, ExchangeMailbox, Mail
 
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
@@ -82,6 +82,12 @@ def main():
         description="Download attachments from Mailbox (IMAP) and store metadata in SQLite"
     )
     parser.add_argument(
+        "--mailbox-type", 
+        choices=["IMAP", "Exchange"],
+        default="IMAP",
+        help="Type of mailbox to connect to."
+    )
+    parser.add_argument(
         "--email",
         help="Email address",
         required=False,
@@ -106,9 +112,14 @@ def main():
         default=".attachhound/processed_emails.db",
     )
     parser.add_argument(
-        "--inbox",
-        help="Name of folder on IMAP server, where mails are to be fetched from",
+        "--folder",
+        help="Name of folder on server, where mails are to be fetched from",
         default="inbox",
+    )
+    parser.add_argument(
+        "--public-folder",
+        help="Folder is public/shared one. (On Exchange server only!)",
+        action="store_true"
     )
     parser.add_argument(
         "--attachment-dir",
@@ -126,7 +137,7 @@ def main():
 
     # Setup logging configuration
     logging.basicConfig(
-        level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
     logging.info("Starting the email attachment downloader script.")
@@ -160,12 +171,13 @@ def main():
     while True:
         try:
             # Connect to the email server and download attachments
-            mailbox = IMAPMailbox(export_directory=args.attachment_dir)
+            mailbox_class = {"IMAP":IMAPMailbox,"Exchange":ExchangeMailbox}[args.mailbox_type]
+            mailbox = mailbox_class(export_directory=args.attachment_dir)
             mailbox.connect(args.email, args.password)
             logging.info("Connected to the email server successfully.")
 
             download_attachments(
-                mailbox, conn, folder=args.inbox, attachment_dir=args.attachment_dir
+                mailbox, conn, folder=args.folder, attachment_dir=args.attachment_dir
             )
             logging.info("Attachment download and metadata storage completed.")
         except Exception as e:

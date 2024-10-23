@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from exchangelib import Credentials, Account, Configuration, DELEGATE, Message, FileAttachment
 from typing import List, Optional
 import logging
 import os
@@ -260,3 +261,109 @@ class IMAPMailbox(Mailbox):
         if self.connection:
             self.connection.close()
             self.connection.logout()
+
+
+class ExchangeMailbox(Mailbox):
+    """
+    Implementation of Mailbox using Exchange server via Exchange Web Services (EWS) using exchangelib
+    """
+
+    def __init__(self, export_directory: str = "attachments", server: str = os.environ.get("EXCHANGE_SERVER")):
+        super().__init__(export_directory)
+
+        self.server = server
+        self.account = None
+        logging.debug(f"Using Exchange server: {self.server}")
+
+    def connect(self, email_address:str, password:str):
+        """
+        Connect to the Exchange server using the provided email and password
+        """
+        logging.info("Connecting to the Exchange server")
+        try:
+            cred = Credentials(email_address, password)
+            config = Configuration(server=self.server, credentials=cred)
+            self.account = Account(email_address, config=config, autodiscover=False, credentials=cred )
+            logging.info(f"Connected successfully to Exchange server {self.server}")
+        except Exception as e:
+            logging.error(f"Failed to connect to Exchange server: {e}")
+            raise SystemExit("Invalid credentials, server configuration or ")
+
+    def select_folder(self, folder: str, public: bool = False):
+        """
+        Select a folder in the Exchange mailbox (e.g. 'inbox')
+        """
+        if public:
+            logging.info("Selecting a public/shared folder!")
+        logging.info(f"Selecting the mailbox folder: {folder}")
+        
+        root = self.account.public_folders_root if public else self.account.inbox
+        try:
+            self.folder = root / folder
+        except Exception as e:
+            logging.error(f"Failed to select folder {folder}")
+            logging.error(e)
+            raise Exception(f"Folder {folder} not found!")
+        logging.info(f"Selected folder {folder}")
+    
+    def search_emails(self) -> List[str]:
+        logging.info("Search for all email messages in the selected folder")
+        emails = list(
+            self.folder.filter(is_read=False).order_by("-datetime_received")
+        )
+
+        uids=[email.message_id for email in emails]
+
+        logging.info(f"Found {len(uids)} emails.")
+
+        return uids
+    
+    def get_mail(self, uid: str) -> Optional[Mail]:
+        """
+        Fetch a specific email by its UID (message_id)
+        """
+        logging.info(f"Fetching email with UID: {uid}")
+        try:
+            queryset = list(self.folder.filter(message_id=uid))
+            
+            if not queryset or len(queryset)==0:
+                logging.warning(f"No email found with UID: {uid}")
+                return None
+
+            email = queryset[0]
+
+            if not email:
+                logging.warning(f"No email found with UID: {uid}")
+                return None
+
+            subject = email.subject
+            sender = str(email.sender.email_address)
+            recipient = str(email.to_recipients[0].email_address) if email.to_recipients else None
+            date = email.datetime_received.isoformat()
+            body = email.body
+            attachments = self.get_attachments(email, subject, sender, date)
+            
+            return Mail(uid=uid, subject=subject, sender=sender, recipient=recipient, date=date, body=body, attachments=attachments)
+
+        except Exception as e:
+            logging.error(f"Error fetching email UID {uid}: {e}")
+            return None
+        
+    def get_attachments(self, email: Message, subject: str, sender: str, date: str) -> List[str]:
+        """
+        Download and return the list of attachment file paths.
+        """
+        attachments = []
+        for attachment in email.attachments:
+            if isinstance(attachment, FileAttachment):
+                filename = sanitize_filename(attachment.name)
+                email_prefix = sanitize_filename(f"{subject}_{sender}_{date}")
+                output_path = os.path.join(self.attachment_dir, f"{email_prefix}_{filename}")
+                with open(output_path, "wb") as f:
+                    f.write(attachment.content)
+                attachments.append(output_path)
+                logging.info(f"Attachment saved to {output_path}")
+        return attachments
+    
+    def close(self):
+        pass
