@@ -3,7 +3,7 @@ import os
 import logging
 import time
 import sqlite3
-from utils import Mailbox, IMAPMailbox, Mail
+from mail import Mailbox, IMAPMailbox, Mail
 
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
