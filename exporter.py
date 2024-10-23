@@ -85,8 +85,8 @@ def main():
     parser.add_argument(
         "--mailbox-type", 
         choices=["IMAP", "Exchange"],
-        default="IMAP",
-        help="Type of mailbox to connect to (IMAP or Exchange). Default is 'IMAP'."
+        help="Type of mailbox to connect to (IMAP or Exchange). Default is 'IMAP'.",
+        default=os.environ.get("MAILBOX_TYPE","IMAP"),
     )
     parser.add_argument(
         "--email",
