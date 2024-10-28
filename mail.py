@@ -164,7 +164,7 @@ class Mailbox(ABC):
         pass
 
     @abstractmethod
-    def select_folder(self, folder: str):
+    def select_folder(self, folder: str, public: bool):
         """
         Selects a folder in the mailbox.
 
@@ -257,7 +257,7 @@ class IMAPMailbox(Mailbox):
                 "Invalid credentials. Please check your email and password."
             )
 
-    def select_folder(self, folder: str):
+    def select_folder(self, folder: str, public: bool):
         """
         Selects a folder in the IMAP mailbox.
 

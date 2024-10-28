@@ -42,6 +42,7 @@ def download_attachments(
     mailbox: Mailbox,
     conn: sqlite3.Connection,
     folder: str = "inbox",
+    public_folder: bool = False,
     attachment_dir: str = "attachments",
 ):
     """
@@ -60,7 +61,7 @@ def download_attachments(
     Returns:
         None
     """
-    mailbox.select_folder(folder)
+    mailbox.select_folder(folder, public_folder)
     uids = mailbox.search_emails()
     skipped_emails = 0
 
@@ -178,7 +179,7 @@ def main():
             logging.info("Connected to the email server successfully.")
 
             download_attachments(
-                mailbox, conn, folder=args.folder, attachment_dir=args.attachment_dir
+                mailbox, conn, folder=args.folder, attachment_dir=args.attachment_dir, public_folder=args.public_folder
             )
             logging.info("Attachment download and metadata storage completed.")
         except Exception as e:
