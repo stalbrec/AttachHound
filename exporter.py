@@ -170,7 +170,6 @@ def main():
         "mailbox_type": "mailbox:type",
         "email": "mailbox:email",
         "password": "mailbox:password",
-        "email": "mailbox:email",
         "folder": "mailbox:folder",
         "public_folder": "mailbox:public",
         "interval": "interval",

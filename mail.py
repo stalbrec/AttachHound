@@ -146,12 +146,12 @@ class AttachmentHandler(ABC):
                 f"Attachment directory already exists: {self.export_directory}"
             )
 
-    def write_attachment(self, metadata: dict, payload) -> str:
+    def write_attachment(self, sender: str, subject: str, date: datetime, filename:str, payload) -> str:
         """
         Writes attachment to some location in export_directory
         Returns: filepath
         """
-        fname = self.output_path(metadata)
+        fname = self.output_path(sender, subject, date, filename)
         try:
             with open(fname, "wb") as fout:
                 fout.write(payload)
@@ -161,22 +161,23 @@ class AttachmentHandler(ABC):
         return fname
 
     @abstractmethod
-    def output_path(self, metadata):
+    def output_path(self, sender: str, subject: str, date: datetime, filename:str):
         """
         Defines the logic, where and under what name attachments will be organised
         Returns absolute output path
         """
+        pass
 
 
 class SimpleExporter(AttachmentHandler):
     def __init__(self, export_directory: str):
         super().__init__(export_directory)
 
-    def output_path(self, metadata):
-        fname = metadata["fname"]
+    def output_path(self, sender: str, subject: str, date: datetime, filename:str):
+        fname = filename
         fname = sanitize_filename(fname)
         prefix = sanitize_filename(
-            f'{metadata["subject"]}_{metadata["sender"]}_{metadata["date"].isoformat()}'
+            f'{subject}_{sender}_{date.isoformat()}'
         )
         out = os.path.join(self.export_directory, f"{prefix}_{fname}")
         return out
@@ -465,15 +466,13 @@ class IMAPMailbox(Mailbox):
                 continue
             filename = part.get_filename()
             if filename:
-                attachment_metadata = {
-                    "fname": sanitize_filename(self.decode_header_value(filename)),
-                    "subject": subject,
-                    "sender": sender,
-                    "date": date,
-                }
                 payload = part.get_payload(decode=True)
                 output_path = self.attachment_handler.write_attachment(
-                    attachment_metadata, payload
+                    sender,
+                    subject,
+                    date,
+                    sanitize_filename(self.decode_header_value(filename)),
+                    payload
                 )
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
@@ -649,15 +648,13 @@ class ExchangeMailbox(Mailbox):
         attachments = []
         for attachment in email.attachments:
             if isinstance(attachment, FileAttachment):
-                attachment_metadata = {
-                    "fname": sanitize_filename(attachment.name),
-                    "subject": subject,
-                    "sender": sender,
-                    "date": date,
-                }
                 payload = attachment.content
                 output_path = self.attachment_handler.write_attachment(
-                    attachment_metadata, payload
+                    sender,
+                    subject,
+                    date,
+                    sanitize_filename(attachment.name),
+                    payload
                 )
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
