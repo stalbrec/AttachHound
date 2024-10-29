@@ -6,6 +6,7 @@ import sqlite3
 from mail import Mailbox, IMAPMailbox, ExchangeMailbox, Mail
 import importlib
 
+
 def get_attachment_handler_class(handler_str):
     mod = importlib.import_module(".".join(handler_str.split(".")[:-1]))
     cl = getattr(mod, handler_str.split(".")[-1])
@@ -14,11 +15,12 @@ def get_attachment_handler_class(handler_str):
 
 class Config:
     def __init__(self, config_dict):
-        for k,v in config_dict.items():
+        for k, v in config_dict.items():
             if isinstance(v, dict):
                 setattr(self, k, Config(v))
             else:
                 setattr(self, k, v)
+
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
     """
@@ -98,7 +100,7 @@ def main():
     )
     parser.add_argument("--config", help="path to configuration file (YAML format)")
     parser.add_argument(
-        "--mailbox-type", 
+        "--mailbox-type",
         choices=["IMAP", "Exchange"],
         help="Type of mailbox to connect to (IMAP or Exchange). Default is 'IMAP'.",
     )
@@ -125,7 +127,7 @@ def main():
     parser.add_argument(
         "--public-folder",
         help="If specified, connects to a public/shared folder (on Exchange server only).",
-        action="store_true"
+        action="store_true",
     )
     parser.add_argument(
         "--attachment-dir",
@@ -133,23 +135,23 @@ def main():
     )
 
     args = parser.parse_args()
-    
+
     config_dict = {
-           "mailbox": {
-               "type": "IMAP",
-               "server": "imap.google.com",
-               "port": 993,
-                "email": None,
-                "password": None,
-                "folder":"inbox",
-                "public":False,
-           },
-            "interval":60,
-            "module":"mail.SimpleExporter",
-            "directory":".attachhound/attachments",
-            "database":".attachhound/processed_emails.db",
-        }
-    
+        "mailbox": {
+            "type": "IMAP",
+            "server": "imap.google.com",
+            "port": 993,
+            "email": None,
+            "password": None,
+            "folder": "inbox",
+            "public": False,
+        },
+        "interval": 60,
+        "module": "mail.SimpleExporter",
+        "directory": ".attachhound/attachments",
+        "database": ".attachhound/processed_emails.db",
+    }
+
     def deep_update(d1, d2):
         for k, v in d2.items():
             if isinstance(v, dict) and k in d1 and isinstance(d1[k], dict):
@@ -158,22 +160,22 @@ def main():
                 d1[k] = v
         return d1
 
-
     if args.config is not None:
         import yaml
+
         config_updates = yaml.safe_load(open(args.config, "r"))
         deep_update(config_dict, config_updates)
-    
+
     for arg, keys in {
-        "mailbox_type":"mailbox:type",
-        "email":"mailbox:email",
-        "password":"mailbox:password",
-        "email":"mailbox:email",
-        "folder":"mailbox:folder",
-        "public_folder":"mailbox:public",
-        "interval":"interval",
-        "attachment_dir":"directory",
-        "db":"database",
+        "mailbox_type": "mailbox:type",
+        "email": "mailbox:email",
+        "password": "mailbox:password",
+        "email": "mailbox:email",
+        "folder": "mailbox:folder",
+        "public_folder": "mailbox:public",
+        "interval": "interval",
+        "attachment_dir": "directory",
+        "db": "database",
     }.items():
         current = config_dict
         value = getattr(args, arg)
@@ -184,7 +186,7 @@ def main():
             if k not in current or not isinstance(current[k], dict):
                 current[k] = {}
             current = current[k]
-        current[key_list[-1]]=value
+        current[key_list[-1]] = value
     config = Config(config_dict)
 
     if not config.mailbox.email or not config.mailbox.password:
@@ -229,17 +231,22 @@ def main():
     while True:
         try:
             # Connect to the email server and download attachments
-            mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[config.mailbox.type]
+            mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[
+                config.mailbox.type
+            ]
             mailbox = mailbox_class(
-                server=config.mailbox.server, 
-                export_directory=config.directory, 
-                attachment_handler=get_attachment_handler_class(config.module)
-                )
+                server=config.mailbox.server,
+                export_directory=config.directory,
+                attachment_handler=get_attachment_handler_class(config.module),
+            )
             mailbox.connect(config.mailbox.email, config.mailbox.password)
             logging.info("Connected to the email server successfully.")
 
             download_attachments(
-                mailbox, conn, folder=config.mailbox.folder, public_folder=config.mailbox.public
+                mailbox,
+                conn,
+                folder=config.mailbox.folder,
+                public_folder=config.mailbox.public,
             )
             logging.info("Attachment download and metadata storage completed.")
         except Exception as e:
@@ -248,7 +255,9 @@ def main():
             mailbox.close()
             logging.info("Disconnected from the email server.")
 
-            logging.info(f"Waiting for {config.interval} seconds before the next run...")
+            logging.info(
+                f"Waiting for {config.interval} seconds before the next run..."
+            )
             time.sleep(int(config.interval))
 
 
