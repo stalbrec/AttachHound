@@ -146,7 +146,9 @@ class AttachmentHandler(ABC):
                 f"Attachment directory already exists: {self.export_directory}"
             )
 
-    def write_attachment(self, sender: str, subject: str, date: datetime, filename:str, payload) -> str:
+    def write_attachment(
+        self, sender: str, subject: str, date: datetime, filename: str, payload
+    ) -> str:
         """
         Writes attachment to some location in export_directory
         Returns: filepath
@@ -161,7 +163,7 @@ class AttachmentHandler(ABC):
         return fname
 
     @abstractmethod
-    def output_path(self, sender: str, subject: str, date: datetime, filename:str):
+    def output_path(self, sender: str, subject: str, date: datetime, filename: str):
         """
         Defines the logic, where and under what name attachments will be organised
         Returns absolute output path
@@ -173,12 +175,10 @@ class SimpleExporter(AttachmentHandler):
     def __init__(self, export_directory: str):
         super().__init__(export_directory)
 
-    def output_path(self, sender: str, subject: str, date: datetime, filename:str):
+    def output_path(self, sender: str, subject: str, date: datetime, filename: str):
         fname = filename
         fname = sanitize_filename(fname)
-        prefix = sanitize_filename(
-            f'{subject}_{sender}_{date.isoformat()}'
-        )
+        prefix = sanitize_filename(f"{subject}_{sender}_{date.isoformat()}")
         out = os.path.join(self.export_directory, f"{prefix}_{fname}")
         return out
 
@@ -472,7 +472,7 @@ class IMAPMailbox(Mailbox):
                     subject,
                     date,
                     sanitize_filename(self.decode_header_value(filename)),
-                    payload
+                    payload,
                 )
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
@@ -650,11 +650,7 @@ class ExchangeMailbox(Mailbox):
             if isinstance(attachment, FileAttachment):
                 payload = attachment.content
                 output_path = self.attachment_handler.write_attachment(
-                    sender,
-                    subject,
-                    date,
-                    sanitize_filename(attachment.name),
-                    payload
+                    sender, subject, date, sanitize_filename(attachment.name), payload
                 )
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
