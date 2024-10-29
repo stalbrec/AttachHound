@@ -129,6 +129,52 @@ class Mail:
         cursor.execute("SELECT 1 FROM processed_emails WHERE uid = ?", (uid,))
         return cursor.fetchone() is not None
 
+class AttachmentHandler(ABC):
+    """
+    Abstract class that defines the interface for attachment file handler
+
+    """
+    def __init__(self, export_directory: str):
+        self.export_directory = export_directory
+        if not os.path.exists(self.export_directory):
+            os.makedirs(self.export_directory)
+            logging.info(f"Created directory for attachments: {self.export_directory}")
+        else:
+            logging.debug(f"Attachment directory already exists: {self.export_directory}")
+
+    def write_attachment(self, metadata:dict, payload) -> str:
+        """
+        Writes attachment to some location in export_directory
+        Returns: filepath
+        """
+        fname = self.output_path(metadata)
+        try:
+            with open(fname, "wb") as fout:
+                fout.write(payload)
+        except Exception as e:
+            logging.error("Could not save attachment with metadata {metadata}.")
+            raise e
+        return fname
+
+    @abstractmethod
+    def output_path(self, metadata):
+        """
+        Defines the logic, where and under what name attachments will be organised
+        Returns absolute output path
+        """
+
+class SimpleExporter(AttachmentHandler):
+    def __init__(self, export_directory:str):
+        super().__init__(export_directory)
+
+    def output_path(self, metadata):
+        fname = metadata["fname"]
+        fname = sanitize_filename(fname)
+        prefix = sanitize_filename(f'{metadata["subject"]}_{metadata["sender"]}_{metadata["date"].isoformat()}')
+        out = os.path.join(
+                     self.export_directory, f"{prefix}_{fname}"
+                 )
+        return out
 
 class Mailbox(ABC):
     """
@@ -138,7 +184,7 @@ class Mailbox(ABC):
         attachment_dir (str): Directory where email attachments will be saved.
     """
 
-    def __init__(self, server:str, export_directory: str = "attachments"):
+    def __init__(self, server:str, export_directory: str = "attachments", attachment_handler: AttachmentHandler = SimpleExporter):
         """
         Initializes the Mailbox class with an attachment directory.
 
@@ -147,6 +193,7 @@ class Mailbox(ABC):
         """
         self.server = server
         self.attachment_dir = export_directory
+        self.attachment_handler = attachment_handler(self.attachment_dir)
         if not os.path.exists(self.attachment_dir):
             os.makedirs(self.attachment_dir)
             logging.info(f"Created directory for attachments: {self.attachment_dir}")
@@ -220,7 +267,8 @@ class IMAPMailbox(Mailbox):
         self,
         server: str,
         export_directory: str = "attachments",
-        port: int = os.environ.get("IMAP_PORT", 993),
+        attachment_handler: AttachmentHandler = SimpleExporter,
+        port: int = 993,
     ):
         """
         Initializes the IMAPMailbox class.
@@ -230,7 +278,7 @@ class IMAPMailbox(Mailbox):
             server (str): IMAP server address.
             port (int): IMAP server port.
         """
-        super().__init__(server, export_directory)
+        super().__init__(server, export_directory, attachment_handler)
         self.port = port
         self.connection = None
         logging.debug(f"Using IMAP server: {self.server} on port {self.port}")
@@ -322,7 +370,7 @@ class IMAPMailbox(Mailbox):
                     subject=subject,
                     sender=sender,
                     recipient=recipient,
-                    date=date,
+                    date=date.isoformat(),
                     body=body,
                     attachments=attachments,
                 )
@@ -342,7 +390,7 @@ class IMAPMailbox(Mailbox):
             return decoded_value.decode(encoding or "utf-8")
         return decoded_value
 
-    def parse_email_date(self, date_str: str) -> str:
+    def parse_email_date(self, date_str: str) -> datetime:
         """
         Parses the email's date string into an ISO 8601 format.
 
@@ -355,11 +403,11 @@ class IMAPMailbox(Mailbox):
         for date_format in ["%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z"]:
             try:
                 email_datetime = datetime.strptime(date_str, date_format)
-                return email_datetime.isoformat()
+                return email_datetime
             except ValueError:
                 logging.debug(f"Failed to parse date with format: {date_format}")
         logging.error(f"Failed to parse date: {date_str}")
-        return "Unknown"
+        return None
 
     def get_email_body(self, msg) -> str:
         """
@@ -393,7 +441,7 @@ class IMAPMailbox(Mailbox):
             uid (str): The UID of the email.
             subject (str): The subject of the email.
             sender (str): The sender's email address.
-            date (str): The date when the email was sent.
+            date (datetime.datetime): The date when the email was sent.
 
         Returns:
             List[str]: List of file paths where attachments have been saved.
@@ -406,14 +454,19 @@ class IMAPMailbox(Mailbox):
                 continue
             filename = part.get_filename()
             if filename:
-                filename = self.decode_header_value(filename)
-                sanitized_filename = sanitize_filename(filename)
-                email_prefix = sanitize_filename(f"{subject}_{sender}_{date}")
-                output_path = f"{self.attachment_dir}/{email_prefix}_{sanitized_filename}".replace(
-                    " ", "_"
-                )
-                with open(output_path, "wb") as file:
-                    file.write(part.get_payload(decode=True))
+                attachment_metadata = {
+                    "fname":sanitize_filename(
+                        self.decode_header_value(filename))
+                        ,
+                    "subject":subject,
+                    "sender":sender,
+                    "date":date
+                }
+                payload = part.get_payload(decode=True)
+                output_path = self.attachment_handler.write_attachment(
+                    attachment_metadata,
+                    payload
+                )                
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
         return attachments
@@ -442,6 +495,7 @@ class ExchangeMailbox(Mailbox):
         self,
         server: str,
         export_directory: str = "attachments",
+        attachment_handler: AttachmentHandler = SimpleExporter,
     ):
         """
         Initializes the ExchangeMailbox class.
@@ -450,7 +504,7 @@ class ExchangeMailbox(Mailbox):
             export_directory (str): Directory to save email attachments.
             server (str): Exchange server address.
         """
-        super().__init__(server, export_directory)
+        super().__init__(server, export_directory, attachment_handler)
         self.account = None
         logging.debug(f"Using Exchange server: {self.server}")
 
@@ -548,7 +602,7 @@ class ExchangeMailbox(Mailbox):
                 if email.to_recipients
                 else None
             )
-            date = email.datetime_received.isoformat()
+            date = email.datetime_received
             body = email.body
             attachments = self.get_attachments(email, subject, sender, date)
 
@@ -560,7 +614,7 @@ class ExchangeMailbox(Mailbox):
                 subject=subject,
                 sender=sender,
                 recipient=recipient,
-                date=date,
+                date=date.isoformat(),
                 body=body,
                 attachments=attachments,
             )
@@ -579,7 +633,7 @@ class ExchangeMailbox(Mailbox):
             email (Message): The email object containing attachments.
             subject (str): The subject of the email.
             sender (str): The sender's email address.
-            date (str): The date when the email was sent.
+            date (datetime.datetime): The date when the email was sent.
 
         Returns:
             List[str]: A list of file paths where the attachments have been saved.
@@ -587,13 +641,17 @@ class ExchangeMailbox(Mailbox):
         attachments = []
         for attachment in email.attachments:
             if isinstance(attachment, FileAttachment):
-                filename = sanitize_filename(attachment.name)
-                email_prefix = sanitize_filename(f"{subject}_{sender}_{date}")
-                output_path = os.path.join(
-                    self.attachment_dir, f"{email_prefix}_{filename}"
+                attachment_metadata = {
+                    "fname":sanitize_filename(attachment.name),
+                    "subject":subject,
+                    "sender":sender,
+                    "date":date
+                }
+                payload = attachment.content
+                output_path = self.attachment_handler.write_attachment(
+                    attachment_metadata,
+                    payload
                 )
-                with open(output_path, "wb") as f:
-                    f.write(attachment.content)
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
         return attachments

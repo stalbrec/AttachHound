@@ -4,6 +4,13 @@ import logging
 import time
 import sqlite3
 from mail import Mailbox, IMAPMailbox, ExchangeMailbox, Mail
+import importlib
+
+def get_attachment_handler_class(handler_str):
+    mod = importlib.import_module(".".join(handler_str.split(".")[:-1]))
+    cl = getattr(mod, handler_str.split(".")[-1])
+    return cl
+
 
 class Config:
     def __init__(self, config_dict):
@@ -138,7 +145,7 @@ def main():
                 "public":False,
            },
             "interval":60,
-            "module":"SimpleExporter",
+            "module":"mail.SimpleExporter",
             "directory":".attachhound/attachments",
             "database":".attachhound/processed_emails.db",
         }
@@ -223,7 +230,11 @@ def main():
         try:
             # Connect to the email server and download attachments
             mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[config.mailbox.type]
-            mailbox = mailbox_class(server=config.mailbox.server, export_directory=config.directory)
+            mailbox = mailbox_class(
+                server=config.mailbox.server, 
+                export_directory=config.directory, 
+                attachment_handler=get_attachment_handler_class(config.module)
+                )
             mailbox.connect(config.mailbox.email, config.mailbox.password)
             logging.info("Connected to the email server successfully.")
 
