@@ -138,13 +138,14 @@ class Mailbox(ABC):
         attachment_dir (str): Directory where email attachments will be saved.
     """
 
-    def __init__(self, export_directory: str = "attachments"):
+    def __init__(self, server:str, export_directory: str = "attachments"):
         """
         Initializes the Mailbox class with an attachment directory.
 
         Args:
             export_directory (str): Directory to save email attachments.
         """
+        self.server = server
         self.attachment_dir = export_directory
         if not os.path.exists(self.attachment_dir):
             os.makedirs(self.attachment_dir)
@@ -217,8 +218,8 @@ class IMAPMailbox(Mailbox):
 
     def __init__(
         self,
+        server: str,
         export_directory: str = "attachments",
-        server: str = os.environ.get("IMAP_SERVER", "imap.gmail.com"),
         port: int = os.environ.get("IMAP_PORT", 993),
     ):
         """
@@ -229,8 +230,7 @@ class IMAPMailbox(Mailbox):
             server (str): IMAP server address.
             port (int): IMAP server port.
         """
-        super().__init__(export_directory)
-        self.server = server
+        super().__init__(server, export_directory)
         self.port = port
         self.connection = None
         logging.debug(f"Using IMAP server: {self.server} on port {self.port}")
@@ -440,8 +440,8 @@ class ExchangeMailbox(Mailbox):
 
     def __init__(
         self,
+        server: str,
         export_directory: str = "attachments",
-        server: str = os.environ.get("EXCHANGE_SERVER"),
     ):
         """
         Initializes the ExchangeMailbox class.
@@ -450,8 +450,7 @@ class ExchangeMailbox(Mailbox):
             export_directory (str): Directory to save email attachments.
             server (str): Exchange server address.
         """
-        super().__init__(export_directory)
-        self.server = server
+        super().__init__(server, export_directory)
         self.account = None
         logging.debug(f"Using Exchange server: {self.server}")
 

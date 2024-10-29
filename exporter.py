@@ -5,6 +5,13 @@ import time
 import sqlite3
 from mail import Mailbox, IMAPMailbox, ExchangeMailbox, Mail
 
+class Config:
+    def __init__(self, config_dict):
+        for k,v in config_dict.items():
+            if isinstance(v, dict):
+                setattr(self, k, Config(v))
+            else:
+                setattr(self, k, v)
 
 def init_db(db_name: str = "processed_emails.db") -> sqlite3.Connection:
     """
@@ -43,7 +50,6 @@ def download_attachments(
     conn: sqlite3.Connection,
     folder: str = "inbox",
     public_folder: bool = False,
-    attachment_dir: str = "attachments",
 ):
     """
     Downloads attachments from emails in the specified folder.
@@ -83,40 +89,31 @@ def main():
     parser = argparse.ArgumentParser(
         description="Download attachments from Mailbox (IMAP or Exchange) and store metadata in SQLite."
     )
+    parser.add_argument("--config", help="path to configuration file (YAML format)")
     parser.add_argument(
         "--mailbox-type", 
         choices=["IMAP", "Exchange"],
         help="Type of mailbox to connect to (IMAP or Exchange). Default is 'IMAP'.",
-        default=os.environ.get("MAILBOX_TYPE","IMAP"),
     )
     parser.add_argument(
         "--email",
         help="Email address to connect to the mailbox. Can also be provided via the EMAIL_ADDRESS environment variable.",
-        required=False,
-        default=os.environ.get("EMAIL_ADDRESS"),
     )
     parser.add_argument(
         "--password",
         help="Password for the email account. Can also be provided via the EMAIL_PASSWORD environment variable.",
-        required=False,
-        default=os.environ.get("EMAIL_PASSWORD"),
     )
     parser.add_argument(
         "--interval",
         help="Check interval in seconds to look for new emails. Default is 60 seconds.",
-        required=False,
-        default=os.environ.get("CHECK_INTERVAL", 60),
     )
     parser.add_argument(
         "--db",
         help="Path to SQLite database for storing processed email UIDs and metadata. Default is '.attachhound/processed_emails.db'.",
-        required=False,
-        default=".attachhound/processed_emails.db",
     )
     parser.add_argument(
         "--folder",
         help="Name of the folder on the server from which emails will be fetched. Default is 'inbox'.",
-        default="inbox",
     )
     parser.add_argument(
         "--public-folder",
@@ -126,12 +123,64 @@ def main():
     parser.add_argument(
         "--attachment-dir",
         help="Directory where downloaded attachments will be stored. Default is '.attachhound/attachments'.",
-        default=".attachhound/attachments",
     )
 
     args = parser.parse_args()
+    
+    config_dict = {
+           "mailbox": {
+               "type": "IMAP",
+               "server": "imap.google.com",
+               "port": 993,
+                "email": None,
+                "password": None,
+                "folder":"inbox",
+                "public":False,
+           },
+            "interval":60,
+            "module":"SimpleExporter",
+            "directory":".attachhound/attachments",
+            "database":".attachhound/processed_emails.db",
+        }
+    
+    def deep_update(d1, d2):
+        for k, v in d2.items():
+            if isinstance(v, dict) and k in d1 and isinstance(d1[k], dict):
+                deep_update(d1[k], v)
+            else:
+                d1[k] = v
+        return d1
 
-    if not args.email or not args.password:
+
+    if args.config is not None:
+        import yaml
+        config_updates = yaml.safe_load(open(args.config, "r"))
+        deep_update(config_dict, config_updates)
+    
+    for arg, keys in {
+        "mailbox_type":"mailbox:type",
+        "email":"mailbox:email",
+        "password":"mailbox:password",
+        "email":"mailbox:email",
+        "folder":"mailbox:folder",
+        "public_folder":"mailbox:public",
+        "interval":"interval",
+        "attachment_dir":"directory",
+        "db":"database",
+    }.items():
+        current = config_dict
+        value = getattr(args, arg)
+        if value is None:
+            continue
+        key_list = [keys] if ":" not in keys else keys.split(":")
+        for k in key_list[:-1]:
+            if k not in current or not isinstance(current[k], dict):
+                current[k] = {}
+            current = current[k]
+        current[key_list[-1]]=value
+    config = Config(config_dict)
+
+    if not config.mailbox.email or not config.mailbox.password:
         logging.error("Email or password not provided.")
         raise SystemExit(
             "Please provide an email and password either via command line or environment variables."
@@ -143,23 +192,23 @@ def main():
     )
 
     logging.info("Starting the email attachment downloader script.")
-    logging.info(f"Checking for new emails every {args.interval} seconds.")
-    logging.info(f"Using email address: {args.email}")
+    logging.info(f"Checking for new emails every {config.interval} seconds.")
+    logging.info(f"Using email address: {config.mailbox.email}")
     logging.debug(
-        f"Database path: {args.db}, Attachment directory: {args.attachment_dir}"
+        f"Database path: {config.database}, Attachment directory: {config.directory}"
     )
 
     logging.info("Ensuring necessary directories exist...")
 
     # Create the directory for attachments if it doesn't exist
-    if not os.path.exists(args.attachment_dir):
-        os.makedirs(args.attachment_dir)
-        logging.info(f"Created directory for attachments: {args.attachment_dir}")
+    if not os.path.exists(config.directory):
+        os.makedirs(config.directory)
+        logging.info(f"Created directory for attachments: {config.directory}")
     else:
-        logging.debug(f"Attachment directory already exists: {args.attachment_dir}")
+        logging.debug(f"Attachment directory already exists: {config.directory}")
 
     # Create the directory for the SQLite database if it doesn't exist
-    db_dir = os.path.dirname(args.db)
+    db_dir = os.path.dirname(config.database)
     if not os.path.exists(db_dir):
         os.makedirs(db_dir)
         logging.info(f"Created directory for SQLite database: {db_dir}")
@@ -167,19 +216,19 @@ def main():
         logging.debug(f"SQLite database directory already exists: {db_dir}")
 
     # Initialize the SQLite database
-    conn = init_db(args.db)
-    logging.info(f"SQLite database initialized at {args.db}")
+    conn = init_db(config.database)
+    logging.info(f"SQLite database initialized at {config.database}")
 
     while True:
         try:
             # Connect to the email server and download attachments
-            mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[args.mailbox_type]
-            mailbox = mailbox_class(export_directory=args.attachment_dir)
-            mailbox.connect(args.email, args.password)
+            mailbox_class = {"IMAP": IMAPMailbox, "Exchange": ExchangeMailbox}[config.mailbox.type]
+            mailbox = mailbox_class(server=config.mailbox.server, export_directory=config.directory)
+            mailbox.connect(config.mailbox.email, config.mailbox.password)
             logging.info("Connected to the email server successfully.")
 
             download_attachments(
-                mailbox, conn, folder=args.folder, attachment_dir=args.attachment_dir, public_folder=args.public_folder
+                mailbox, conn, folder=config.mailbox.folder, public_folder=config.mailbox.public
             )
             logging.info("Attachment download and metadata storage completed.")
         except Exception as e:
@@ -188,8 +237,8 @@ def main():
             mailbox.close()
             logging.info("Disconnected from the email server.")
 
-            logging.info(f"Waiting for {args.interval} seconds before the next run...")
-            time.sleep(int(args.interval))
+            logging.info(f"Waiting for {config.interval} seconds before the next run...")
+            time.sleep(int(config.interval))
 
 
 if __name__ == "__main__":
