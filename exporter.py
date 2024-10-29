@@ -134,10 +134,11 @@ def main():
         help="Directory where downloaded attachments will be stored. Default is '.attachhound/attachments'.",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="count",
         default=0,
-        help="Increase verbosity (-v,-vv,-vvv)"
+        help="Increase verbosity (-v,-vv,-vvv)",
     )
 
     args = parser.parse_args()
@@ -184,7 +185,7 @@ def main():
     }.items():
         current = config_dict
         value = getattr(args, arg)
-        if "public" in arg and "public" in config_updates.get("mailbox",{}):
+        if "public" in arg and "public" in config_updates.get("mailbox", {}):
             continue
         if value is None:
             continue
@@ -203,12 +204,12 @@ def main():
         )
 
     # Setup logging configuration
-    logging_levels=[
+    logging_levels = [
         logging.WARNING,
         logging.INFO,
         logging.DEBUG,
     ]
-    logging_level= logging_levels[min(args.verbose, len(logging_levels)-1)]
+    logging_level = logging_levels[min(args.verbose, len(logging_levels) - 1)]
     logging.basicConfig(
         level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s"
     )
