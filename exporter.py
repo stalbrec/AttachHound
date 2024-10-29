@@ -133,6 +133,12 @@ def main():
         "--attachment-dir",
         help="Directory where downloaded attachments will be stored. Default is '.attachhound/attachments'.",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity (-v,-vv,-vvv)"
+    )
 
     args = parser.parse_args()
 
@@ -195,8 +201,14 @@ def main():
         )
 
     # Setup logging configuration
+    logging_levels=[
+        logging.WARNING,
+        logging.INFO,
+        logging.DEBUG,
+    ]
+    logging_level= logging_levels[min(args.verbose, len(logging_levels)-1)]
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+        level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
     logging.info("Starting the email attachment downloader script.")
