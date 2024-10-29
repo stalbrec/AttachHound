@@ -170,7 +170,7 @@ def main():
         import yaml
 
         config_updates = yaml.safe_load(open(args.config, "r"))
-        deep_update(config_dict, config_updates)
+        config_dict = deep_update(config_dict, config_updates)
 
     for arg, keys in {
         "mailbox_type": "mailbox:type",
@@ -184,6 +184,8 @@ def main():
     }.items():
         current = config_dict
         value = getattr(args, arg)
+        if "public" in arg and "public" in config_updates.get("mailbox",{}):
+            continue
         if value is None:
             continue
         key_list = [keys] if ":" not in keys else keys.split(":")
