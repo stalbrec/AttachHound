@@ -156,7 +156,7 @@ class AttachmentHandler(ABC):
             with open(fname, "wb") as fout:
                 fout.write(payload)
         except Exception as e:
-            logging.error("Could not save attachment with metadata {metadata}.")
+            logging.error("Could not save attachment with subject {subject}.")
             raise e
         return fname
 
