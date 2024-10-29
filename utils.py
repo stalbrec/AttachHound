@@ -1,7 +1,16 @@
 import logging
 import re
+import os
 from pathlib import Path
 
+def increment_filename(filepath:str) -> str:
+    base,extension = os.path.splitext(filepath)
+    counter = 1
+    new_filepath = filepath
+    while os.path.exists(new_filepath):
+        new_filepath = f"{base}_{counter}{extension}"
+        counter += 1
+    return new_filepath
 
 def sanitize_filename(filename: str) -> str:
     """

@@ -9,7 +9,7 @@ from email.header import decode_header
 import json
 import sqlite3
 from datetime import datetime
-from utils import sanitize_filename
+from utils import sanitize_filename, increment_filename
 
 
 class Mail:
@@ -154,6 +154,8 @@ class AttachmentHandler(ABC):
         Returns: filepath
         """
         fname = self.output_path(sender, subject, date, filename)
+        if os.path.exists(fname):
+            fname = increment_filename(fname)
         try:
             with open(fname, "wb") as fout:
                 fout.write(payload)
