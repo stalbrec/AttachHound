@@ -248,6 +248,7 @@ class Mailbox(ABC):
         self._verified_filters = {
             "is_read": bool,
             "max_age_days": int,
+            "before": str,
         }
         for k, v in filters.items():
             if k not in self._verified_filters.keys():
@@ -375,6 +376,12 @@ class IMAPMailbox(Mailbox):
                 cutoff_date = datetime.now(timezone.utc) - timedelta(
                     days=filters["max_age_days"]
                 )
+                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
+                logging.info(f"Looking for mails before {cutoff_date}")
+                query.append(f"BEFORE {cutoff_date}")
+            if "before" in filters:
+                cutoff_date =  datetime.strptime(filters["before"], "%d.%m.%Y")
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
                 cutoff_date = cutoff_date.strftime("%d-%b-%Y")
                 logging.info(f"Looking for mails before {cutoff_date}")
                 query.append(f"BEFORE {cutoff_date}")
@@ -631,6 +638,10 @@ class ExchangeMailbox(Mailbox):
                 days=filters["max_age_days"]
             )
             logging.info(f"Looking for mails before {cutoff_date.strftime('%d-%b-%Y')}")
+            parsed_filters["datetime_received__lt"] = cutoff_date
+        if "before" in filters:
+            cutoff_date =  datetime.strptime(filters["before"], "%d.%m.%Y")
+            cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             parsed_filters["datetime_received__lt"] = cutoff_date
 
         emails = list(
