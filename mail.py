@@ -478,6 +478,9 @@ class IMAPMailbox(Mailbox):
             return msg.get_payload(decode=True).decode()
         return ""
 
+    def trash_mail(self, uid):
+        self.connection.store(uid, "+FLAGS", "\\Deleted")
+
     def get_attachments(
         self, msg, uid: str, subject: str, sender: str, date: str
     ) -> List[str]:
@@ -518,7 +521,12 @@ class IMAPMailbox(Mailbox):
         """
         Closes the IMAP mailbox connection.
         """
+        if self.delete_mails:
+            logging.info("permanently deleting marked emails")
+            self.connection.expunge()
+
         logging.info("Closing the mailbox connection.")
+
         if self.connection:
             self.connection.close()
             self.connection.logout()
