@@ -259,6 +259,15 @@ class Mailbox(ABC):
         pass
 
     @abstractmethod
+    def trash_mail(self, uid: str) -> None:
+        """
+        Moves a Mail with a given UID to Mailbox specific Trash.
+
+        Args:
+            uid (str): The UID of the email to trash.
+        """
+
+    @abstractmethod
     def close(self):
         """
         Closes the connection to the mailbox.
@@ -631,6 +640,14 @@ class ExchangeMailbox(Mailbox):
         except Exception as e:
             logging.error(f"Error fetching email UID {uid}: {e}")
             return None
+
+    def trash_mail(self, uid):
+        try:
+            queryset = self.folder.filter(message_id=uid)
+        except Exception as e:
+            logging.error(f"Error fetching email (for trashing) UID {uid}: {e}")
+            return
+        queryset.delete()
 
     def get_attachments(
         self, email: Message, subject: str, sender: str, date: str
