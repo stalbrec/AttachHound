@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from exchangelib import Credentials, Account, Configuration, Message, FileAttachment
-from typing import List, Optional
+from typing import List, Dict, Optional
 import logging
 import os
 import imaplib
@@ -8,8 +8,8 @@ import email
 from email.header import decode_header
 import json
 import sqlite3
-from datetime import datetime
-from utils import sanitize_filename
+from datetime import datetime, timedelta, timezone
+from utils import sanitize_filename, increment_filename
 
 
 class Mail:
@@ -130,6 +130,61 @@ class Mail:
         return cursor.fetchone() is not None
 
 
+class AttachmentHandler(ABC):
+    """
+    Abstract class that defines the interface for attachment file handler
+
+    """
+
+    def __init__(self, export_directory: str):
+        self.export_directory = export_directory
+        if not os.path.exists(self.export_directory):
+            os.makedirs(self.export_directory)
+            logging.info(f"Created directory for attachments: {self.export_directory}")
+        else:
+            logging.debug(
+                f"Attachment directory already exists: {self.export_directory}"
+            )
+
+    def write_attachment(
+        self, sender: str, subject: str, date: datetime, filename: str, payload
+    ) -> str:
+        """
+        Writes attachment to some location in export_directory
+        Returns: filepath
+        """
+        fname = self.output_path(sender, subject, date, filename)
+        if os.path.exists(fname):
+            fname = increment_filename(fname)
+        try:
+            with open(fname, "wb") as fout:
+                fout.write(payload)
+        except Exception as e:
+            logging.error("Could not save attachment with subject {subject}.")
+            raise e
+        return fname
+
+    @abstractmethod
+    def output_path(self, sender: str, subject: str, date: datetime, filename: str):
+        """
+        Defines the logic, where and under what name attachments will be organised
+        Returns absolute output path
+        """
+        pass
+
+
+class SimpleExporter(AttachmentHandler):
+    def __init__(self, export_directory: str):
+        super().__init__(export_directory)
+
+    def output_path(self, sender: str, subject: str, date: datetime, filename: str):
+        fname = filename
+        fname = sanitize_filename(fname)
+        prefix = sanitize_filename(f"{subject}_{sender}_{date.isoformat()}")
+        out = os.path.join(self.export_directory, f"{prefix}_{fname}")
+        return out
+
+
 class Mailbox(ABC):
     """
     Abstract class that defines the interface for a mailbox.
@@ -138,14 +193,22 @@ class Mailbox(ABC):
         attachment_dir (str): Directory where email attachments will be saved.
     """
 
-    def __init__(self, export_directory: str = "attachments"):
+    def __init__(
+        self,
+        server: str,
+        export_directory: str = "attachments",
+        attachment_handler: AttachmentHandler = SimpleExporter,
+    ):
         """
         Initializes the Mailbox class with an attachment directory.
 
         Args:
             export_directory (str): Directory to save email attachments.
         """
+        self.server = server
+        self.delete_mails = False
         self.attachment_dir = export_directory
+        self.attachment_handler = attachment_handler(self.attachment_dir)
         if not os.path.exists(self.attachment_dir):
             os.makedirs(self.attachment_dir)
             logging.info(f"Created directory for attachments: {self.attachment_dir}")
@@ -164,7 +227,7 @@ class Mailbox(ABC):
         pass
 
     @abstractmethod
-    def select_folder(self, folder: str):
+    def select_folder(self, folder: str, public: bool):
         """
         Selects a folder in the mailbox.
 
@@ -174,14 +237,24 @@ class Mailbox(ABC):
         pass
 
     @abstractmethod
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = None) -> List[str]:
         """
         Searches for emails in the selected folder.
 
         Returns:
             List[str]: List of email UIDs found in the folder.
         """
-        pass
+        logging.info("Search for email messages in the selected folder")
+        self._verified_filters = {
+            "is_read": bool,
+            "max_age_days": int,
+            "before": str,
+        }
+        for k, v in filters.items():
+            if k not in self._verified_filters.keys():
+                logging.warning(
+                    f"A filter was provided that has not been tested! ({k}:{v}). It will not be considered!"
+                )
 
     @abstractmethod
     def get_mail(self, uid: str) -> Optional[Mail]:
@@ -195,6 +268,16 @@ class Mailbox(ABC):
             Optional[Mail]: A Mail object containing email data if found, or None if not.
         """
         pass
+
+    @abstractmethod
+    def trash_mail(self, uid: str) -> None:
+        """
+        Moves a Mail with a given UID to Mailbox specific Trash.
+
+        Args:
+            uid (str): The UID of the email to trash.
+        """
+        logging.info(f"Moving mail {uid} to trash")
 
     @abstractmethod
     def close(self):
@@ -217,9 +300,10 @@ class IMAPMailbox(Mailbox):
 
     def __init__(
         self,
+        server: str,
         export_directory: str = "attachments",
-        server: str = os.environ.get("IMAP_SERVER", "imap.gmail.com"),
-        port: int = os.environ.get("IMAP_PORT", 993),
+        attachment_handler: AttachmentHandler = SimpleExporter,
+        port: int = 993,
     ):
         """
         Initializes the IMAPMailbox class.
@@ -229,8 +313,7 @@ class IMAPMailbox(Mailbox):
             server (str): IMAP server address.
             port (int): IMAP server port.
         """
-        super().__init__(export_directory)
-        self.server = server
+        super().__init__(server, export_directory, attachment_handler)
         self.port = port
         self.connection = None
         logging.debug(f"Using IMAP server: {self.server} on port {self.port}")
@@ -257,7 +340,7 @@ class IMAPMailbox(Mailbox):
                 "Invalid credentials. Please check your email and password."
             )
 
-    def select_folder(self, folder: str):
+    def select_folder(self, folder: str, public: bool):
         """
         Selects a folder in the IMAP mailbox.
 
@@ -273,15 +356,37 @@ class IMAPMailbox(Mailbox):
             logging.error(f"Failed to select folder {folder}.")
             raise Exception(f"Failed to select folder {folder}.")
 
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = None) -> List[str]:
         """
         Searches for all emails in the selected folder.
 
         Returns:
             List[str]: List of email UIDs found in the folder.
         """
-        logging.info("Searching for emails in the folder...")
-        result, data = self.connection.uid("search", None, "ALL")
+        super().search_emails(filters)
+        query = "ALL"
+        if filters is not None:
+            query = []
+            if "is_read" in filters:
+                if bool(filters["is_read"]):
+                    query.append("SEEN")
+                else:
+                    query.append("UNSEEN")
+            if "max_age_days" in filters:
+                cutoff_date = datetime.now(timezone.utc) - timedelta(
+                    days=filters["max_age_days"]
+                )
+                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
+                logging.info(f"Looking for mails before {cutoff_date}")
+                query.append(f"BEFORE {cutoff_date}")
+            if "before" in filters:
+                cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
+                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
+                logging.info(f"Looking for mails before {cutoff_date}")
+                query.append(f"BEFORE {cutoff_date}")
+
+        result, data = self.connection.uid("search", None, " ".join(query))
         if result != "OK":
             logging.error("Failed to search for emails.")
             return []
@@ -322,7 +427,7 @@ class IMAPMailbox(Mailbox):
                     subject=subject,
                     sender=sender,
                     recipient=recipient,
-                    date=date,
+                    date=date.isoformat(),
                     body=body,
                     attachments=attachments,
                 )
@@ -342,7 +447,7 @@ class IMAPMailbox(Mailbox):
             return decoded_value.decode(encoding or "utf-8")
         return decoded_value
 
-    def parse_email_date(self, date_str: str) -> str:
+    def parse_email_date(self, date_str: str) -> datetime:
         """
         Parses the email's date string into an ISO 8601 format.
 
@@ -355,11 +460,11 @@ class IMAPMailbox(Mailbox):
         for date_format in ["%a, %d %b %Y %H:%M:%S %z", "%a, %d %b %Y %H:%M:%S %Z"]:
             try:
                 email_datetime = datetime.strptime(date_str, date_format)
-                return email_datetime.isoformat()
+                return email_datetime
             except ValueError:
                 logging.debug(f"Failed to parse date with format: {date_format}")
         logging.error(f"Failed to parse date: {date_str}")
-        return "Unknown"
+        return None
 
     def get_email_body(self, msg) -> str:
         """
@@ -382,6 +487,10 @@ class IMAPMailbox(Mailbox):
             return msg.get_payload(decode=True).decode()
         return ""
 
+    def trash_mail(self, uid):
+        super().trash_mail(uid)
+        self.connection.store(uid, "+FLAGS", "\\Deleted")
+
     def get_attachments(
         self, msg, uid: str, subject: str, sender: str, date: str
     ) -> List[str]:
@@ -393,7 +502,7 @@ class IMAPMailbox(Mailbox):
             uid (str): The UID of the email.
             subject (str): The subject of the email.
             sender (str): The sender's email address.
-            date (str): The date when the email was sent.
+            date (datetime.datetime): The date when the email was sent.
 
         Returns:
             List[str]: List of file paths where attachments have been saved.
@@ -406,14 +515,14 @@ class IMAPMailbox(Mailbox):
                 continue
             filename = part.get_filename()
             if filename:
-                filename = self.decode_header_value(filename)
-                sanitized_filename = sanitize_filename(filename)
-                email_prefix = sanitize_filename(f"{subject}_{sender}_{date}")
-                output_path = f"{self.attachment_dir}/{email_prefix}_{sanitized_filename}".replace(
-                    " ", "_"
+                payload = part.get_payload(decode=True)
+                output_path = self.attachment_handler.write_attachment(
+                    sender,
+                    subject,
+                    date,
+                    sanitize_filename(self.decode_header_value(filename)),
+                    payload,
                 )
-                with open(output_path, "wb") as file:
-                    file.write(part.get_payload(decode=True))
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
         return attachments
@@ -422,7 +531,12 @@ class IMAPMailbox(Mailbox):
         """
         Closes the IMAP mailbox connection.
         """
+        if self.delete_mails:
+            logging.info("permanently deleting marked emails")
+            self.connection.expunge()
+
         logging.info("Closing the mailbox connection.")
+
         if self.connection:
             self.connection.close()
             self.connection.logout()
@@ -440,8 +554,9 @@ class ExchangeMailbox(Mailbox):
 
     def __init__(
         self,
+        server: str,
         export_directory: str = "attachments",
-        server: str = os.environ.get("EXCHANGE_SERVER"),
+        attachment_handler: AttachmentHandler = SimpleExporter,
     ):
         """
         Initializes the ExchangeMailbox class.
@@ -450,8 +565,7 @@ class ExchangeMailbox(Mailbox):
             export_directory (str): Directory to save email attachments.
             server (str): Exchange server address.
         """
-        super().__init__(export_directory)
-        self.server = server
+        super().__init__(server, export_directory, attachment_handler)
         self.account = None
         logging.debug(f"Using Exchange server: {self.server}")
 
@@ -502,15 +616,37 @@ class ExchangeMailbox(Mailbox):
             raise Exception(f"Folder {folder} not found!")
         logging.info(f"Selected folder {folder}")
 
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = {"is_read": False}) -> List[str]:
         """
         Searches for all unread email messages in the selected folder.
 
         Returns:
             List[str]: A list of email UIDs (message IDs) found in the folder.
         """
-        logging.info("Search for all email messages in the selected folder")
-        emails = list(self.folder.filter(is_read=False).order_by("-datetime_received"))
+        super().search_emails(filters)
+
+        parsed_filters = {}
+
+        # enforce known boolean filters to be boolean
+        for k, v in self._verified_filters.items():
+            if v is bool and k in filters.keys():
+                parsed_filters[k] = bool(filters[k])
+
+        # add max_age_days
+        if "max_age_days" in filters:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(
+                days=filters["max_age_days"]
+            )
+            logging.info(f"Looking for mails before {cutoff_date.strftime('%d-%b-%Y')}")
+            parsed_filters["datetime_received__lt"] = cutoff_date
+        if "before" in filters:
+            cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
+            cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+            parsed_filters["datetime_received__lt"] = cutoff_date
+
+        emails = list(
+            self.folder.filter(**parsed_filters).order_by("-datetime_received")
+        )
 
         uids = [email.message_id for email in emails]
 
@@ -549,7 +685,7 @@ class ExchangeMailbox(Mailbox):
                 if email.to_recipients
                 else None
             )
-            date = email.datetime_received.isoformat()
+            date = email.datetime_received
             body = email.body
             attachments = self.get_attachments(email, subject, sender, date)
 
@@ -561,7 +697,7 @@ class ExchangeMailbox(Mailbox):
                 subject=subject,
                 sender=sender,
                 recipient=recipient,
-                date=date,
+                date=date.isoformat(),
                 body=body,
                 attachments=attachments,
             )
@@ -569,6 +705,15 @@ class ExchangeMailbox(Mailbox):
         except Exception as e:
             logging.error(f"Error fetching email UID {uid}: {e}")
             return None
+
+    def trash_mail(self, uid):
+        super().trash_mail(uid)
+        try:
+            queryset = self.folder.filter(message_id=uid)
+        except Exception as e:
+            logging.error(f"Error fetching email (for trashing) UID {uid}: {e}")
+            return
+        queryset.delete()
 
     def get_attachments(
         self, email: Message, subject: str, sender: str, date: str
@@ -580,7 +725,7 @@ class ExchangeMailbox(Mailbox):
             email (Message): The email object containing attachments.
             subject (str): The subject of the email.
             sender (str): The sender's email address.
-            date (str): The date when the email was sent.
+            date (datetime.datetime): The date when the email was sent.
 
         Returns:
             List[str]: A list of file paths where the attachments have been saved.
@@ -588,13 +733,10 @@ class ExchangeMailbox(Mailbox):
         attachments = []
         for attachment in email.attachments:
             if isinstance(attachment, FileAttachment):
-                filename = sanitize_filename(attachment.name)
-                email_prefix = sanitize_filename(f"{subject}_{sender}_{date}")
-                output_path = os.path.join(
-                    self.attachment_dir, f"{email_prefix}_{filename}"
+                payload = attachment.content
+                output_path = self.attachment_handler.write_attachment(
+                    sender, subject, date, sanitize_filename(attachment.name), payload
                 )
-                with open(output_path, "wb") as f:
-                    f.write(attachment.content)
                 attachments.append(output_path)
                 logging.info(f"Attachment saved to {output_path}")
         return attachments
