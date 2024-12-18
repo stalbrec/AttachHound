@@ -445,6 +445,9 @@ class IMAPMailbox(Mailbox):
         Returns:
             str: The decoded header value.
         """
+        logging.debug(f"Decoding header value: {value}")
+        if value is None:
+            return "Unknown"
         decoded_value, encoding = decode_header(value)[0]
         if isinstance(decoded_value, bytes):
             return decoded_value.decode(encoding or "utf-8")
