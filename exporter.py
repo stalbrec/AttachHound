@@ -175,7 +175,7 @@ def main():
     config_dict = {
         "mailbox": {
             "type": "IMAP",
-            "server": "imap.google.com",
+            "server": "imap.gmail.com",
             "port": 993,
             "email": None,
             "password": None,

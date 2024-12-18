@@ -386,6 +386,9 @@ class IMAPMailbox(Mailbox):
                 logging.info(f"Looking for mails before {cutoff_date}")
                 query.append(f"BEFORE {cutoff_date}")
 
+        if len(query) == 0:
+            query = ["ALL"]
+
         result, data = self.connection.uid("search", None, " ".join(query))
         if result != "OK":
             logging.error("Failed to search for emails.")
@@ -442,6 +445,9 @@ class IMAPMailbox(Mailbox):
         Returns:
             str: The decoded header value.
         """
+        logging.debug(f"Decoding header value: {value}")
+        if value is None:
+            return "Unknown"
         decoded_value, encoding = decode_header(value)[0]
         if isinstance(decoded_value, bytes):
             return decoded_value.decode(encoding or "utf-8")
