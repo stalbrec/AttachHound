@@ -70,10 +70,22 @@ CHECK_INTERVAL=60                # in seconds
 For a more detailed configuration more settings are available to the user via the config YAML.
 To run with just extend the docker command, e.g.:
 ```
-docker exec -d -v .attachhound:/app/data ghcr.io/stalbrec/attachhound:main-amd64 python exporter.py --config /app/data/myconfig.yml
+docker run -d -v .attachhound:/app/data ghcr.io/stalbrec/attachhound:main-amd64 python exporter.py --config /app/data/myconfig.yml
 ```
 
 With `.attachhound/myconfig.yml` looking something like this:
+
+```yaml
+mailbox:
+  server: imap.gmail.com
+  email: foo@gmail.com
+  password: "<gmail app password>"
+interval: 5
+directory: /app/data/out
+database: /app/data/processed.db
+```
+
+All available settings are:
 
 ```yaml 
 mailbox:
