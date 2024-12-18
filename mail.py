@@ -386,6 +386,9 @@ class IMAPMailbox(Mailbox):
                 logging.info(f"Looking for mails before {cutoff_date}")
                 query.append(f"BEFORE {cutoff_date}")
 
+        if len(query) == 0:
+            query = ["ALL"]
+
         result, data = self.connection.uid("search", None, " ".join(query))
         if result != "OK":
             logging.error("Failed to search for emails.")
