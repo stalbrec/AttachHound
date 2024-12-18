@@ -8,8 +8,8 @@ import email
 from email.header import decode_header
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
-from utils import sanitize_filename, increment_filename
+from datetime import datetime
+from utils import sanitize_filename, increment_filename, CutOffDate
 
 
 class Mail:
@@ -247,8 +247,10 @@ class Mailbox(ABC):
         logging.info("Search for email messages in the selected folder")
         self._verified_filters = {
             "is_read": bool,
-            "max_age_days": int,
+            "min_age_days": int,
             "before": str,
+            "max_age_days": int,
+            "after": str,
         }
         for k, v in filters.items():
             if k not in self._verified_filters.keys():
@@ -372,19 +374,19 @@ class IMAPMailbox(Mailbox):
                     query.append("SEEN")
                 else:
                     query.append("UNSEEN")
-            if "max_age_days" in filters:
-                cutoff_date = datetime.now(timezone.utc) - timedelta(
-                    days=filters["max_age_days"]
-                )
-                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
-                logging.info(f"Looking for mails before {cutoff_date}")
-                query.append(f"BEFORE {cutoff_date}")
-            if "before" in filters:
-                cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
-                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
-                logging.info(f"Looking for mails before {cutoff_date}")
-                query.append(f"BEFORE {cutoff_date}")
+
+            for before_filter in ["min_age_days", "before"]:
+                if before_filter in filters:
+                    cutoff_date = CutOffDate(filters[before_filter])
+                    logging.info(f"Looking for mails before {cutoff_date}")
+                    query.append(f"BEFORE {cutoff_date}")
+            
+            for after_filter in ["max_age_days", "after"]:
+                if after_filter in filters:
+                    cutoff_date = CutOffDate(filters[after_filter])
+                    logging.info(f"Looking for mails after {cutoff_date}")
+                    query.append(f"AFTER {cutoff_date}")
+
 
         if len(query) == 0:
             query = ["ALL"]
@@ -638,17 +640,18 @@ class ExchangeMailbox(Mailbox):
             if v is bool and k in filters.keys():
                 parsed_filters[k] = bool(filters[k])
 
-        # add max_age_days
-        if "max_age_days" in filters:
-            cutoff_date = datetime.now(timezone.utc) - timedelta(
-                days=filters["max_age_days"]
-            )
-            logging.info(f"Looking for mails before {cutoff_date.strftime('%d-%b-%Y')}")
-            parsed_filters["datetime_received__lt"] = cutoff_date
-        if "before" in filters:
-            cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
-            cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
-            parsed_filters["datetime_received__lt"] = cutoff_date
+        for before_filter in ["min_age_days", "before"]:
+            if before_filter in filters:
+                cutoff_date = CutOffDate(filters[before_filter])
+                logging.info(f"Looking for mails before {cutoff_date}")
+                parsed_filters["datetime_received__lt"] = cutoff_date.datetime
+
+        for after_filter in ["max_age_days", "after"]:
+            if after_filter in filters:
+                cutoff_date = CutOffDate(filters[after_filter])
+                logging.info(f"Looking for mails after {cutoff_date}")
+                parsed_filters["datetime_received__gt"] = cutoff_date.datetime
+
 
         emails = list(
             self.folder.filter(**parsed_filters).order_by("-datetime_received")

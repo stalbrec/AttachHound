@@ -2,6 +2,36 @@ import logging
 import re
 import os
 from pathlib import Path
+from typing import Union
+from datetime import datetime, timedelta, timezone
+
+
+class CutOffDate:
+    def __init__(self, x: Union[str, int]):
+        if isinstance(x, int):
+            self.datetime = datetime.now(timezone.utc) - timedelta(days=x)
+        elif isinstance(x, str):
+
+            def parse_date(date_str):
+                for date_format in [
+                    "%Y-%m-%d",
+                    "%d.%m.%Y",
+                ]:
+                    try:
+                        date = datetime.strptime(date_str, date_format)
+                        return date
+                    except ValueError:
+                        logging.debug(
+                            f"Failed to parse date with format: {date_format}"
+                        )
+                logging.error("Failed to parse date for CutOff Query!")
+                raise NotImplementedError
+
+            self.datetime = parse_date(x)
+            self.datetime = self.datetime.replace(tzinfo=timezone.utc)
+
+    def __str__(self):
+        return self.datetime.strftime("%d-%b-%Y")
 
 
 def increment_filename(filepath: str) -> str:

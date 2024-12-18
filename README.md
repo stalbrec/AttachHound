@@ -97,8 +97,10 @@ mailbox:
     delete: <false | true> # Here you can decide whether the processed mails should be removed from the server
     filters: 
         is_read: <true | true>
+        min_age_days: <int>
+        before: <date str (possible formats: %Y-%m-%d, %d.%m.%Y)>
         max_age_days: <int>
-        before: <date str (%d.%m.%Y assumed!)>
+        after: <date str (possible formats: %Y-%m-%d, %d.%m.%Y)>
     public: <false | true> # public folder (only for EWS)
 module: <exporter module> # modify how your mails should be handled once downloaded (default is 'simple-exporter')
 directory: <some output directory>
