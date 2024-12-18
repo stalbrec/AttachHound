@@ -39,11 +39,24 @@ docker build -t attachhound .
 docker run -d --env-file .env -v <local_path>:/app/data attachhound
 ```
 
+### **Option 3: manual install**
+Last but not least, you can install the requirements with your favorite install of python3 (tested with python 3.11):
+
+```
+pip install -r requirements.txt
+```
+
+```
+python exporter.py --config <your-config>.yml
+```
+
 ---
 
-## ⚙️ **Environment Variables**
+## ⚙️ **Configuration**
 
-To configure AttachHound, create a `.env` file with the following content:
+### Environment Variables
+
+For basic configuration of AttachHound, create a `.env` file with the following content:
 
 ```bash
 MAIL_SERVER=imap.gmail.com       # (default) or any other mail server
@@ -53,8 +66,35 @@ EMAIL_PASSWORD=<your e-mail password>
 CHECK_INTERVAL=60                # in seconds
 ```
 
+### Configuration YAML (recommended)
+For a more detailed configuration more settings are available to the user via the config YAML.
+To run with just extend the docker command, e.g.:
+```
+docker exec -d -v .attachhound:/app/data ghcr.io/stalbrec/attachhound:main-amd64 python exporter.py --config /app/data/myconfig.yml
+```
+
+With `.attachhound/myconfig.yml` looking something like this:
+
+```yaml 
+mailbox:
+    type: <"Exchange" | "IMAP">
+    server: <your mail server>
+    email: <your email address>
+    password: <your email password>
+    folder: <some mailbox dir>
+    delete: <false | true>
+    filters: 
+        is_read: <true | true>
+        max_age_days: <int>
+        before: <date str (%d.%m.%Y assumed!)>
+    public: <false | true> # public folder (only for EWS)
+module: <exporter module> # modify how your mails should be handled once downloaded (default is 'simple-exporter')
+directory: <some output directory>
+database: <path-to-sql-db>
+interval: 60
+```
 ---
 
-With this setup, AttachHound will periodically check your email, download attachments, and store all relevant metadata for future use. It's an ideal solution for anyone looking to automate their email workflows.
+With this setup, AttachHound will periodically check your email, download attachments, and store all relevant metadata for future use.
 
 ---
