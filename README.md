@@ -98,7 +98,7 @@ mailbox:
     filters: 
         is_read: <true | true>
         max_age_days: <int>
-        before: <date str (%d.%m.%Y assumed!)>
+        before: <date str (possible formats: %Y-%m-%d, %d.%m.%Y)>
     public: <false | true> # public folder (only for EWS)
 module: <exporter module> # modify how your mails should be handled once downloaded (default is 'simple-exporter')
 directory: <some output directory>
