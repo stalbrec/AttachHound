@@ -82,7 +82,7 @@ mailbox:
     email: <your email address>
     password: <your email password>
     folder: <some mailbox dir>
-    delete: <false | true>
+    delete: <false | true> # Here you can decide whether the processed mails should be removed from the server
     filters: 
         is_read: <true | true>
         max_age_days: <int>
