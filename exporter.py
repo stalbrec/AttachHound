@@ -140,6 +140,11 @@ def main():
         action="store_true",
     )
     parser.add_argument(
+        "--delete", "-D",
+        help="If specified, mails that are saved to disk will be deleted on the server.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--attachment-dir",
         help="Directory where downloaded attachments will be stored. Default is '.attachhound/attachments'.",
     )
@@ -193,6 +198,9 @@ def main():
 
         config_updates = yaml.safe_load(open(args.config, "r"))
         config_dict = deep_update(config_dict, config_updates)
+    if "mailbox" in config_dict:
+        if "filters" not in config_dict["mailbox"]:
+            config_dict["mailbox"]["filters"] = {}
 
     for arg, keys in {
         "mailbox_type": "mailbox:type",
@@ -200,15 +208,18 @@ def main():
         "password": "mailbox:password",
         "folder": "mailbox:folder",
         "public_folder": "mailbox:public",
+        "delete": "mailbox:delete",
         "interval": "interval",
         "attachment_dir": "directory",
         "db": "database",
     }.items():
         current = config_dict
         value = getattr(args, arg)
-        if "public" in arg and "public" in config_updates.get("mailbox", {}):
-            continue
-        if value is None:
+        skip = False
+        for bool_flag in ["public", "delete"]:
+            if bool_flag in arg and bool_flag in config_updates.get("mailbox", {}):
+                skip = True
+        if value is None or skip:
             continue
         key_list = [keys] if ":" not in keys else keys.split(":")
         for k in key_list[:-1]:
