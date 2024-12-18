@@ -143,6 +143,17 @@ def main():
 
     args = parser.parse_args()
 
+    # Setup logging configuration
+    logging_levels = [
+        logging.WARNING,
+        logging.INFO,
+        logging.DEBUG,
+    ]
+    logging_level = logging_levels[min(args.verbose, len(logging_levels) - 1)]
+    logging.basicConfig(
+        level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    
     config_dict = {
         "mailbox": {
             "type": "IMAP",
@@ -202,17 +213,6 @@ def main():
         raise SystemExit(
             "Please provide an email and password either via command line or environment variables."
         )
-
-    # Setup logging configuration
-    logging_levels = [
-        logging.WARNING,
-        logging.INFO,
-        logging.DEBUG,
-    ]
-    logging_level = logging_levels[min(args.verbose, len(logging_levels) - 1)]
-    logging.basicConfig(
-        level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
 
     logging.info("Starting the email attachment downloader script.")
     logging.info(f"Checking for new emails every {config.interval} seconds.")
