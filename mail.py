@@ -206,6 +206,7 @@ class Mailbox(ABC):
             export_directory (str): Directory to save email attachments.
         """
         self.server = server
+        self.delete_mails = False
         self.attachment_dir = export_directory
         self.attachment_handler = attachment_handler(self.attachment_dir)
         if not os.path.exists(self.attachment_dir):
@@ -275,6 +276,7 @@ class Mailbox(ABC):
         Args:
             uid (str): The UID of the email to trash.
         """
+        logging.info(f"Moving mail {uid} to trash")
 
     @abstractmethod
     def close(self):
@@ -479,6 +481,7 @@ class IMAPMailbox(Mailbox):
         return ""
 
     def trash_mail(self, uid):
+        super().trash_mail(uid)
         self.connection.store(uid, "+FLAGS", "\\Deleted")
 
     def get_attachments(
@@ -693,6 +696,7 @@ class ExchangeMailbox(Mailbox):
             return None
 
     def trash_mail(self, uid):
+        super().trash_mail(uid)
         try:
             queryset = self.folder.filter(message_id=uid)
         except Exception as e:

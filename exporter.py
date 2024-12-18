@@ -59,6 +59,7 @@ def download_attachments(
     conn: sqlite3.Connection,
     folder: str = "inbox",
     filters: dict = {},
+    delete_mails: bool = False,
     public_folder: bool = False,
 ):
     """
@@ -79,6 +80,7 @@ def download_attachments(
     """
     mailbox.select_folder(folder, public_folder)
     uids = mailbox.search_emails(filters)
+    mailbox.delete_emails = delete_mails
     skipped_emails = 0
 
     for uid in uids:
@@ -86,10 +88,17 @@ def download_attachments(
             logging.debug(f"Email with UID {uid} has already been processed. Skipping.")
             skipped_emails += 1
             continue
-        mail = mailbox.get_mail(uid)
-        if not mail:
-            continue
-        mail.to_sqlite_db(conn)
+        try:
+            mail = mailbox.get_mail(uid)
+            if not mail:
+                continue
+            mail.to_sqlite_db(conn)
+        except Exception as e:
+            logging.error(f"Error while getting mail and downloading attachment (UID {uid})")
+            raise e
+        finally:
+            if delete_mails:
+                mailbox.trash_mail(uid)
 
     logging.info(f"Processed {len(uids) - skipped_emails} emails.")
     logging.info(f"Skipped {skipped_emails} emails already processed.")
@@ -261,6 +270,7 @@ def main():
                 conn,
                 folder=config.mailbox.folder,
                 filters=config.mailbox.filters.__dict__,
+                delete_mails=config.mailbox.delete,
                 public_folder=config.mailbox.public,
             )
             logging.info("Attachment download and metadata storage completed.")
