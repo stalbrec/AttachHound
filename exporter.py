@@ -94,7 +94,9 @@ def download_attachments(
                 continue
             mail.to_sqlite_db(conn)
         except Exception as e:
-            logging.error(f"Error while getting mail and downloading attachment (UID {uid})")
+            logging.error(
+                f"Error while getting mail and downloading attachment (UID {uid})"
+            )
             raise e
         finally:
             if delete_mails:
@@ -140,7 +142,8 @@ def main():
         action="store_true",
     )
     parser.add_argument(
-        "--delete", "-D",
+        "--delete",
+        "-D",
         help="If specified, mails that are saved to disk will be deleted on the server.",
         action="store_true",
     )

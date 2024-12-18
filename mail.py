@@ -380,7 +380,7 @@ class IMAPMailbox(Mailbox):
                 logging.info(f"Looking for mails before {cutoff_date}")
                 query.append(f"BEFORE {cutoff_date}")
             if "before" in filters:
-                cutoff_date =  datetime.strptime(filters["before"], "%d.%m.%Y")
+                cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
                 cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
                 cutoff_date = cutoff_date.strftime("%d-%b-%Y")
                 logging.info(f"Looking for mails before {cutoff_date}")
@@ -640,7 +640,7 @@ class ExchangeMailbox(Mailbox):
             logging.info(f"Looking for mails before {cutoff_date.strftime('%d-%b-%Y')}")
             parsed_filters["datetime_received__lt"] = cutoff_date
         if "before" in filters:
-            cutoff_date =  datetime.strptime(filters["before"], "%d.%m.%Y")
+            cutoff_date = datetime.strptime(filters["before"], "%d.%m.%Y")
             cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
             parsed_filters["datetime_received__lt"] = cutoff_date
 
