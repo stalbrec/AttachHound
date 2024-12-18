@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from exchangelib import Credentials, Account, Configuration, Message, FileAttachment
-from typing import List, Optional
+from typing import List, Dict, Optional
 import logging
 import os
 import imaplib
@@ -8,7 +8,7 @@ import email
 from email.header import decode_header
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from utils import sanitize_filename, increment_filename
 
 
@@ -236,14 +236,23 @@ class Mailbox(ABC):
         pass
 
     @abstractmethod
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = None) -> List[str]:
         """
         Searches for emails in the selected folder.
 
         Returns:
             List[str]: List of email UIDs found in the folder.
         """
-        pass
+        logging.info("Search for email messages in the selected folder")
+        self._verified_filters = {
+            "is_read": bool,
+            "max_age_days": int,
+        }
+        for k, v in filters.items():
+            if k not in self._verified_filters.keys():
+                logging.warning(
+                    f"A filter was provided that has not been tested! ({k}:{v}). It will not be considered!"
+                )
 
     @abstractmethod
     def get_mail(self, uid: str) -> Optional[Mail]:
@@ -344,15 +353,31 @@ class IMAPMailbox(Mailbox):
             logging.error(f"Failed to select folder {folder}.")
             raise Exception(f"Failed to select folder {folder}.")
 
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = None) -> List[str]:
         """
         Searches for all emails in the selected folder.
 
         Returns:
             List[str]: List of email UIDs found in the folder.
         """
-        logging.info("Searching for emails in the folder...")
-        result, data = self.connection.uid("search", None, "ALL")
+        super().search_emails(filters)
+        query = "ALL"
+        if filters is not None:
+            query = []
+            if "is_read" in filters:
+                if bool(filters["is_read"]):
+                    query.append("SEEN")
+                else:
+                    query.append("UNSEEN")
+            if "max_age_days" in filters:
+                cutoff_date = datetime.now(timezone.utc) - timedelta(
+                    days=filters["max_age_days"]
+                )
+                cutoff_date = cutoff_date.strftime("%d-%b-%Y")
+                logging.info(f"Looking for mails before {cutoff_date}")
+                query.append(f"BEFORE {cutoff_date}")
+
+        result, data = self.connection.uid("search", None, " ".join(query))
         if result != "OK":
             logging.error("Failed to search for emails.")
             return []
@@ -573,15 +598,33 @@ class ExchangeMailbox(Mailbox):
             raise Exception(f"Folder {folder} not found!")
         logging.info(f"Selected folder {folder}")
 
-    def search_emails(self) -> List[str]:
+    def search_emails(self, filters: Optional[Dict] = {"is_read": False}) -> List[str]:
         """
         Searches for all unread email messages in the selected folder.
 
         Returns:
             List[str]: A list of email UIDs (message IDs) found in the folder.
         """
-        logging.info("Search for all email messages in the selected folder")
-        emails = list(self.folder.filter(is_read=False).order_by("-datetime_received"))
+        super().search_emails(filters)
+
+        parsed_filters = {}
+
+        # enforce known boolean filters to be boolean
+        for k, v in self._verified_filters.items():
+            if v is bool and k in filters.keys():
+                parsed_filters[k] = bool(filters[k])
+
+        # add max_age_days
+        if "max_age_days" in filters:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(
+                days=filters["max_age_days"]
+            )
+            logging.info(f"Looking for mails before {cutoff_date.strftime('%d-%b-%Y')}")
+            parsed_filters["datetime_received__lt"] = cutoff_date
+
+        emails = list(
+            self.folder.filter(**parsed_filters).order_by("-datetime_received")
+        )
 
         uids = [email.message_id for email in emails]
 

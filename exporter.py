@@ -58,6 +58,7 @@ def download_attachments(
     mailbox: Mailbox,
     conn: sqlite3.Connection,
     folder: str = "inbox",
+    filters: dict = {},
     public_folder: bool = False,
 ):
     """
@@ -77,7 +78,7 @@ def download_attachments(
         None
     """
     mailbox.select_folder(folder, public_folder)
-    uids = mailbox.search_emails()
+    uids = mailbox.search_emails(filters)
     skipped_emails = 0
 
     for uid in uids:
@@ -153,7 +154,7 @@ def main():
     logging.basicConfig(
         level=logging_level, format="%(asctime)s - %(levelname)s - %(message)s"
     )
-    
+
     config_dict = {
         "mailbox": {
             "type": "IMAP",
@@ -220,7 +221,6 @@ def main():
     logging.debug(
         f"Database path: {config.database}, Attachment directory: {config.directory}"
     )
-
     logging.info("Ensuring necessary directories exist...")
 
     # Create the directory for attachments if it doesn't exist
@@ -260,6 +260,7 @@ def main():
                 mailbox,
                 conn,
                 folder=config.mailbox.folder,
+                filters=config.mailbox.filters.__dict__,
                 public_folder=config.mailbox.public,
             )
             logging.info("Attachment download and metadata storage completed.")
