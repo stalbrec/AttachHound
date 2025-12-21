@@ -12,18 +12,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        arch: [arm64, amd64]
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-        with:
-          install: true
 
       - name: Log in to GHCR
         uses: docker/login-action@v2
@@ -32,10 +29,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker image
+      - name: Determine image tags
+        id: image-tags
         run: |
+          # derive owner from GITHUB_REPOSITORY (owner/repo)
+          OWNER=${GITHUB_REPOSITORY%%/*}
           REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2 |  tr '[:upper:]' '[:lower:]')
-          docker buildx build \
-            --platform linux/${{ matrix.arch }} \
-            -t ghcr.io/stalbrec/$REPO_NAME:${{ github.ref_name }}-${{ matrix.arch }} \
-            --push .
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # push the tag name (e.g. v1.2.3) and also latest
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+            echo "ghcr.io/${OWNER}/${REPO_NAME}:${TAG_NAME}" >> "$GITHUB_ENV"
+            echo "ghcr.io/${OWNER}/${REPO_NAME}:latest" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+          else
+            # non-tag pushes: push latest and short SHA
+            SHORT_SHA=${GITHUB_SHA::7}
+            echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+            echo "ghcr.io/${OWNER}/${REPO_NAME}:latest" >> "$GITHUB_ENV"
+            echo "ghcr.io/${OWNER}/${REPO_NAME}:${SHORT_SHA}" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64, linux/arm64
+          tags: ${{ env.IMAGE_TAGS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
